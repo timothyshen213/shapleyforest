@@ -1,0 +1,20 @@
+Package: shapff
+Title: SHAPley Fuzzy Forest
+Version: 0.1.0
+Authors@R: 
+    person("Timothy", "Shen", , "tzshen@g.ucla.edu", role = c("aut", "cre"))
+Description: Extends the Fuzzy Forest to incorporate SHAPley values into the feature selection process.
+Imports:
+    fuzzyforest (>= 1.0.0),
+    randomForest (>= 4.6-14),
+    fastshap (>= 0.1.0),
+    shapviz (>= 0.9.4),
+    dplyr (>= 1.1.3),
+    purrr (>= 1.0.2),
+    ggplot2 (>= 3.4.3)
+Enhances:
+    fuzzyforest
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2.9000
