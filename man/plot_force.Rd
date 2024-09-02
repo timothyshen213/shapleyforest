@@ -11,7 +11,7 @@ plot_force(object, ...)
   object,
   row_id,
   row_name = NULL,
-  max_display = 10L,
+  max_display = NULL,
   fill_colors = c("#59c46b", "#3b528b"),
   contrast = TRUE,
   bar_label_size = 3.2,
@@ -29,7 +29,9 @@ If list, selected observations are averaged.}
 \item{row_name}{Optional. A name or vector of names for the observations.
 If not provided, the \code{row_id} will be used.}
 
-\item{max_display}{The maximum number of features to display in the plot. Default is \code{10}.}
+\item{max_display}{The maximum number of features to display in the plot.
+If set to \code{NULL} it is defaulted to maximum possible.
+Default is \code{NULL}.}
 
 \item{fill_colors}{A vector of colors to fill the bars in the force plot.
 Each color must be a valid ggplot color or hex code. Default is

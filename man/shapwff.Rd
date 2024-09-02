@@ -130,6 +130,7 @@ vims <- wff_fit$feature_list
 #plot results
 modplot(wff_fit)
 }
+
 }
 \references{
 Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.

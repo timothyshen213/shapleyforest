@@ -30,6 +30,13 @@
 #'                          values in the screening step. Default is `1`. Increasing
 #'                          \code{nsim} leads to more accurate results, but at the cost
 #'                          of computational cost.
+#' @import fuzzyforest
+#' @import randomForest
+#' @import fastshap
+#' 
+#' @importFrom randomForest margin
+#' @importFrom fastshap explain
+#' @importFrom randomForest combine
 #' @return A data.frame with the top ranked features.
 
 shapselect_RF <- function(X, y, drop_fraction, number_selected, mtry_factor,

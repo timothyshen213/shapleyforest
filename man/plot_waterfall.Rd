@@ -11,7 +11,7 @@ plot_waterfall(object, ...)
   object,
   row_id,
   row_name = NULL,
-  max_display = 10L,
+  max_display = NULL,
   order_fun = function(s) order(abs(s)),
   fill_colors = c("#59c46b", "#3b528b"),
   contrast = TRUE,
@@ -30,7 +30,9 @@ If list, selected observations are averaged.}
 \item{row_name}{Optional. A name or vector of names for the observations.
 If not provided, the \code{row_id} will be used.}
 
-\item{max_display}{The maximum number of features to display in the plot. Default is \code{10}.}
+\item{max_display}{The maximum number of features to display in the plot.
+If set to \code{NULL} it is defaulted to maximum possible.
+Default is \code{NULL}.}
 
 \item{order_fun}{Function used to order the features in the waterfall plot. Default orders
 by absolute SHAP values.}

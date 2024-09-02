@@ -58,6 +58,10 @@
 #' @import fuzzyforest
 #' @import randomForest
 #' @import fastshap
+#' 
+#' @importFrom randomForest margin
+#' @importFrom fastshap explain
+#' @importFrom randomForest combine
 
 
 shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
@@ -298,7 +302,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
                                     shap_obj = shap_final_obj,
                                     final_X = final_X)
   
-  cat("Done")
+  cat("Done \n")
   
   return(out)
 }
@@ -369,6 +373,10 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
 #' @import randomForest
 #' @import fastshap
 #' 
+#' @importFrom randomForest margin
+#' @importFrom fastshap explain
+#' @importFrom randomForest combine
+#' 
 #' @references
 #' Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
 #'
@@ -411,6 +419,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
 #' #plot results
 #' modplot(wff_fit)
 #' }
+#' 
 
 shapwff <- function(X, y, Z=NULL, shap_model = 1, WGCNA_params=WGCNA_control(p=6),
                      screen_params=fuzzyforest:::screen_control(min_ntree=5000),

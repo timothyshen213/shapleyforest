@@ -9,7 +9,9 @@
 #'                        or "both". Default is "beeswarm".
 #' @param color_bar_title Title for the color bar in the beeswarm plot. Default is "Feature Value".
 #'                        Leave as is if \code{kind} = "bar".
-#' @param max_display     The maximum number of features to display. Default is `10`.
+#' @param max_display     The maximum number of features to display.
+#'                        If set to `NULL` it is defaulted to maximum possible.
+#'                        Default is `NULL`.
 #' @param fill            The color to fill bars in the bar plot or color points in the beeswarm plot. 
 #'                        Must be a valid \code{\link[ggplot2]{ggplot2}} color or hex code. 
 #'                        Default is "#3e568a".
@@ -35,7 +37,7 @@ plot_importance <- function(object, ...) {
 #' @export
 plot_importance.shap_fuzzy_forest <- function(object, kind = "beeswarm", 
                                               color_bar_title = "Feature Value",
-                                              max_display = 10L, fill = "#3e568a",
+                                              max_display = NULL, fill = "#3e568a",
                                               sort_features = TRUE,
                                               show_numbers = TRUE, 
                                               viridis_args = list(begin = 0.25, 
@@ -50,6 +52,10 @@ plot_importance.shap_fuzzy_forest <- function(object, kind = "beeswarm",
     is_ggplot_color <- q %in% colors()
     
     return(is_hex || is_ggplot_color)
+  }
+  
+  if (max_display==NULL){
+    max_display = length(colnames(shap_object))
   }
   
   if (kind != "bar" && kind != "beeswarm" && kind != "both"){
@@ -154,7 +160,9 @@ plot_dependence.shap_fuzzy_forest <- function(object, features, color_var = "aut
 #'                        If list, selected observations are averaged.
 #' @param row_name        Optional. A name or vector of names for the observations. 
 #'                        If not provided, the \code{row_id} will be used.
-#' @param max_display     The maximum number of features to display in the plot. Default is `10`.
+#' @param max_display     The maximum number of features to display in the plot. 
+#'                        If set to `NULL` it is defaulted to maximum possible.
+#'                        Default is `NULL`.
 #' @param order_fun       Function used to order the features in the waterfall plot. Default orders 
 #'                        by absolute SHAP values.
 #' @param fill_colors     A vector of colors to fill the bars in the waterfall plot. 
@@ -181,7 +189,7 @@ plot_waterfall <- function(object, ...) {
 #'   Waterfall plot for an object of class "shap_fuzzy_forest" through `shapviz`.
 #' @export
 
-plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_display=10L,
+plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_display=NULL,
                                              order_fun = function(s) order(abs(s)),
                                              fill_colors = c("#59c46b","#3b528b"),
                                              contrast = TRUE, show_connection = TRUE,
@@ -198,6 +206,10 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
     return(is_hex || is_ggplot_color)
   }
   valid_colors <- sapply(fill_colors, is_valid_color)
+  
+  if (max_display==NULL){
+    max_display = length(colnames(shap_object))
+  }
   if (!is.numeric(row_id)){
     stop("row_id must be a valid row index to its corresponding observation")
   }
@@ -264,7 +276,9 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
 #'                        If list, selected observations are averaged.
 #' @param row_name        Optional. A name or vector of names for the observations. 
 #'                        If not provided, the \code{row_id} will be used.
-#' @param max_display     The maximum number of features to display in the plot. Default is `10`.
+#' @param max_display     The maximum number of features to display in the plot. 
+#'                        If set to `NULL` it is defaulted to maximum possible.
+#'                        Default is `NULL`.
 #' @param fill_colors     A vector of colors to fill the bars in the force plot. 
 #'                        Each color must be a valid ggplot color or hex code. Default is 
 #'                        `c("#59c46b","#3b528b")`.
@@ -284,7 +298,7 @@ plot_force <- function(object, ...) {
 #'   Force plot for an object of class "shap_fuzzy_forest" through `shapviz`.
 #' @export
 
-plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_display=10L,
+plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_display=NULL,
                                          fill_colors = c("#59c46b","#3b528b"),
                                          contrast = TRUE, bar_label_size = 3.2,
                                          show_annotation = TRUE,...){
@@ -300,6 +314,11 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
     return(is_hex || is_ggplot_color)
   }
   valid_colors <- sapply(fill_colors, is_valid_color)
+  
+  if (max_display==NULL){
+    max_display = length(colnames(shap_object))
+  }
+  
   if (!is.numeric(row_id)){
     stop("row_id must be a valid row index to its corresponding observation")
   }
@@ -351,5 +370,38 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
     theme(plot.title = element_text(size = 14, hjust = 0.5))
   
   print(force_plot)
+}
+
+#' Plot Potential Interaction Matrix in SHAP Fuzzy Forests
+#'
+#' Generates a potential interaction strength matrix of all features.
+#' Interactions is calculated from \code{shapviz}'s 
+#' \link[shapviz]{potential_interactions}.
+#' @export
+#' @param object          A SHAP Fuzzy Forest object.
+#'                        
+#' @return A ggplot2 object representing the SHAP potential interaction matrix.
+#' 
+#' @export
+plot_potential_interactions <- function(object,...){
+  UseMethod("plot_potential_interactions")
+}
+
+#' @describeIn plot_potential_interactions
+#'   Potential Interaction Matrix of class "shap_fuzzy_forest" through `shapviz`.
+#' @export
+plot_potential_interactions.shap_fuzzy_forest <- function(object,...){
+  interaction_data <- detect_interaction(object, 0.1, all=TRUE)
+  
+  ggplot(interaction_data, aes(x = FeatureA, y = FeatureB, fill = Interaction_Strength)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = round(Interaction_Strength, 3)), color = "black", size = 3) +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = median(interaction_data$Interaction_Strength), 
+                         limit = c(min(interaction_data$Interaction_Strength), max(interaction_data$Interaction_Strength)),
+                         space = "Lab", name="Interaction Strength") +
+    theme_minimal() + 
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    labs(x = "FeatureA", y = "FeatureB", title = "Potential Interactions")
+  
 }
 

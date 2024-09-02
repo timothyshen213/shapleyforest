@@ -11,7 +11,7 @@ plot_importance(object, ...)
   object,
   kind = "beeswarm",
   color_bar_title = "Feature Value",
-  max_display = 10L,
+  max_display = NULL,
   fill = "#3e568a",
   sort_features = TRUE,
   show_numbers = TRUE,
@@ -28,7 +28,9 @@ or "both". Default is "beeswarm".}
 \item{color_bar_title}{Title for the color bar in the beeswarm plot. Default is "Feature Value".
 Leave as is if \code{kind} = "bar".}
 
-\item{max_display}{The maximum number of features to display. Default is \code{10}.}
+\item{max_display}{The maximum number of features to display.
+If set to \code{NULL} it is defaulted to maximum possible.
+Default is \code{NULL}.}
 
 \item{fill}{The color to fill bars in the bar plot or color points in the beeswarm plot.
 Must be a valid \code{\link[ggplot2]{ggplot2}} color or hex code.

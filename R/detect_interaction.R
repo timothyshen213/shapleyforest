@@ -7,15 +7,20 @@
 #' @param thresh  Threshold for interaction strength. Threshold should
 #'                be between `0` and `1` where the higher values
 #'                indicates strong interaction effects.
+#' @param all     Returns all interaction. strength values 
+#'                Default is `FALSE`.
 #' @param ...     Additional arguments not in use.
 #' @return A dataframe of potential pairwise interactions
 #' 
 #' @export
-interaction <- function(object, thresh) {
+detect_interaction <- function(object, thresh, all=FALSE) {
+  cat("Note: fastshap does not inherently calculate interaction. These are estimates. \n")
   names <- object$final_SHAP[[1]]
   shap <- object$shap_obj
   shap_object <- shapviz(shap, X = object$final_X)
   total_interactions <- list()
+  total_sig_interactions <- list()
+  
   
   for (p in 1:length(names)){
     feat <- names[p]
@@ -30,12 +35,21 @@ interaction <- function(object, thresh) {
         Interaction_Strength = sig_interactions
       )
       
-      total_interactions[[feat]] <- interactions_df
+      total_sig_interactions[[feat]] <- interactions_df
     }
+    interactions_df <- data.frame(
+      FeatureA = feat,
+      FeatureB = names(interactions),
+      Interaction_Strength = interactions
+    )
+    total_interactions[[feat]] <- interactions_df
   }
+  all_interactions <- do.call(rbind, total_interactions)
+
+  row.names(all_interactions) <- NULL
   
-  if (length(total_interactions) > 0) {
-    potential_interactions <- do.call(rbind, total_interactions)
+  if (length(total_sig_interactions) > 0) {
+    potential_interactions <- do.call(rbind, total_sig_interactions)
     potential_interactions <- potential_interactions %>%
       mutate(pair = pmap(list(FeatureA, FeatureB), ~ {
         pair <- sort(c(..1, ..2))
@@ -51,5 +65,8 @@ interaction <- function(object, thresh) {
     print("No significant interactions found.")
   }
   
+  if (all == TRUE){
+    return(all_interactions)
+  }
 }
 
