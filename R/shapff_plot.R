@@ -54,7 +54,7 @@ plot_importance.shap_fuzzy_forest <- function(object, kind = "beeswarm",
     return(is_hex || is_ggplot_color)
   }
   
-  if (max_display==NULL){
+  if (is.null(max_display)){
     max_display = length(colnames(shap_object))
   }
   
@@ -207,7 +207,7 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
   }
   valid_colors <- sapply(fill_colors, is_valid_color)
   
-  if (max_display==NULL){
+  if (is.null(max_display)){
     max_display = length(colnames(shap_object))
   }
   if (!is.numeric(row_id)){
@@ -315,7 +315,7 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
   }
   valid_colors <- sapply(fill_colors, is_valid_color)
   
-  if (max_display==NULL){
+  if (is.null(max_display)){
     max_display = length(colnames(shap_object))
   }
   
