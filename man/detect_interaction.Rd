@@ -4,7 +4,7 @@
 \alias{detect_interaction}
 \title{Potential interaction variables for fuzzy_forest object}
 \usage{
-detect_interaction(object, thresh, all = FALSE)
+detect_interaction(object, thresh, all = FALSE, verbose = FALSE)
 }
 \arguments{
 \item{object}{A fuzzy_forest object.}
@@ -15,6 +15,8 @@ indicates strong interaction effects.}
 
 \item{all}{Returns all interaction. strength values
 Default is \code{FALSE}.}
+
+\item{verbose}{Hide potential interaction printout. Defaul is \code{FALSE}}
 
 \item{...}{Additional arguments not in use.}
 }

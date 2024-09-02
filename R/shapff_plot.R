@@ -144,8 +144,7 @@ plot_dependence.shap_fuzzy_forest <- function(object, features, color_var = "aut
   if (is_valid_color(color)== FALSE) {
     stop("color must be a valid ggplot color or hex code")
   }
-  dependence_plot <- sv_dependence(shap_object, v = features, color_var = color_var, color = color, 
-                                     viridis_args = viridis_args)
+  dependence_plot <- sv_dependence(shap_object, v = features, color_var = color_var, color = color)
   print(dependence_plot)
 }
 
@@ -213,7 +212,7 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
   if (!is.numeric(row_id)){
     stop("row_id must be a valid row index to its corresponding observation")
   }
-  if (!is.character(row_name) && row_name != NULL){
+  if (!is.character(row_name) && !is.null(row_name)){
     stop("row_name must be a character string")
   }
   if (!is.numeric(max_display)){
@@ -241,8 +240,8 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
                                  show_annotation = show_annotation)
   if (is.null(row_name)){
     if (length(row_id) > 1){
-      row_names <- paste(row_id, collapse = ", ")
-      sample_names <- paste0("Samples ", row_names)
+      row_name <- paste(row_id, collapse = ", ")
+      sample_names <- paste0("Samples ", row_name)
     }
     if (length(row_id) == 1){
       sample_names <- paste0("Sample ", row_id)
@@ -250,11 +249,11 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
   }
   else{
     if (length(row_id) > 1){
-      row_names <- paste(row_names, collapse = ", ")
-      sample_names <- paste0("Samples ", row_names)
+      row_name <- paste(row_name, collapse = ", ")
+      sample_names <- paste0("Samples ", row_name)
     }
     if (length(row_id) == 1){
-      sample_names <- paste0("Sample ", row_names)
+      sample_names <- paste0("Sample ", row_name)
     }
   }
   plot_name <- paste0("Waterfall Plot of ", sample_names)
@@ -322,7 +321,7 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
   if (!is.numeric(row_id)){
     stop("row_id must be a valid row index to its corresponding observation")
   }
-  if (!is.character(row_name) && row_name != NULL){
+  if (!is.character(row_name) && !is.null(row_name)){
     stop("row_name must be a character string")
   }
   if (!is.numeric(max_display)){
@@ -337,7 +336,7 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
   if (!is.logical(contrast)){
     stop("contrast must be boolean")
   }
-  if (!is.numerical(bar_label_size)){
+  if (!is.numeric(bar_label_size)){
     stop("bar_label_size must be numerical")
   }
   if (!is.logical(show_annotations)){
@@ -349,19 +348,19 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
                          show_annotation = show_annotation)
   if (is.null(row_name)){
     if (length(row_id) > 1){
-      row_names <- paste(row_id, collapse = ", ")
-      sample_names <- paste0("Samples ", row_names)
+      row_name <- paste(row_id, collapse = ", ")
+      sample_names <- paste0("Samples ", row_name)
     }
     if (length(row_id) == 1){
       sample_names <- paste0("Sample ", row_id)
     }
   } else{
     if (length(row_id) > 1){
-      row_names <- paste(row_names, collapse = ", ")
-      sample_names <- paste0("Samples ", row_names)
+      row_name <- paste(row_name, collapse = ", ")
+      sample_names <- paste0("Samples ", row_name)
     }
     if (length(row_id) == 1){
-      sample_names <- paste0("Sample ", row_names)
+      sample_names <- paste0("Sample ", row_name)
     }
   }
   plot_name <- paste0("Force Plot of ", sample_names)

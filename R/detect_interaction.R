@@ -9,11 +9,12 @@
 #'                indicates strong interaction effects.
 #' @param all     Returns all interaction. strength values 
 #'                Default is `FALSE`.
+#' @param verbose Hide potential interaction printout. Defaul is `FALSE`
 #' @param ...     Additional arguments not in use.
 #' @return A dataframe of potential pairwise interactions
 #' 
 #' @export
-detect_interaction <- function(object, thresh, all=FALSE) {
+detect_interaction <- function(object, thresh, all=FALSE, verbose=FALSE) {
   cat("Note: fastshap does not inherently calculate interaction. These are estimates. \n")
   names <- object$final_SHAP[[1]]
   shap <- object$shap_obj
@@ -60,9 +61,13 @@ detect_interaction <- function(object, thresh, all=FALSE) {
       select(-pair)
     
     row.names(potential_interactions) <- NULL
-    print(potential_interactions)
+    if (verbose){
+      print(potential_interactions)
+    }
   } else {
-    print("No significant interactions found.")
+    if (verbose){
+      print("No significant interactions found.")
+    }
   }
   
   if (all == TRUE){
