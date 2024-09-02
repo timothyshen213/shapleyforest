@@ -132,20 +132,9 @@ plot_dependence.shap_fuzzy_forest <- function(object, features, color_var = "aut
                                                                   option = "viridis"), ...){
   shap <- object$shap_obj
   shap_object <- shapviz(shap)
-
-  is_valid_color <- function(q) {
-    hex_pattern <- "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
-    is_hex <- grepl(hex_pattern, q)
-    is_ggplot_color <- q %in% colors()
-    
-    return(is_hex || is_ggplot_color)
-  }
   
   if (!all(features %in% colnames(shap_object))){
     stop("feature(s) are not in final surviving features")
-  }
-  if (is_valid_color(color)== FALSE) {
-    stop("color must be a valid ggplot color or hex code")
   }
   dependence_plot <- sv_dependence(shap_object, v = features, color_var = color_var, 
                                    viridis_args = viridis_args)
@@ -394,7 +383,7 @@ plot_potential_interactions <- function(object,...){
 #'   Potential Interaction Matrix of class "shap_fuzzy_forest" through `shapviz`.
 #' @export
 plot_potential_interactions.shap_fuzzy_forest <- function(object,...){
-  interaction_data <- detect_interaction(object, 0.1, all=TRUE)
+  interaction_data <- detect_interaction(object, 0.1, all=TRUE, verbose=TRUE)
   
   ggplot(interaction_data, aes(x = FeatureA, y = FeatureB, fill = Interaction_Strength)) +
     geom_tile(color = "white") +
