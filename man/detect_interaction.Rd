@@ -4,7 +4,7 @@
 \alias{detect_interaction}
 \title{Potential interaction variables for fuzzy_forest object}
 \usage{
-detect_interaction(object, thresh, all = FALSE, verbose = FALSE)
+detect_interaction(object, thresh, all = FALSE, verbose = TRUE)
 }
 \arguments{
 \item{object}{A fuzzy_forest object.}

@@ -7,7 +7,13 @@
 \usage{
 plot_dependence(object, ...)
 
-\method{plot_dependence}{shap_fuzzy_forest}(object, features, color_var = "auto", color = "#3b528b", ...)
+\method{plot_dependence}{shap_fuzzy_forest}(
+  object,
+  features,
+  color_var = "auto",
+  viridis_args = list(begin = 0.25, end = 0.75, option = "viridis"),
+  ...
+)
 }
 \arguments{
 \item{object}{A SHAP Fuzzy Forest object.}
@@ -20,8 +26,9 @@ automatically selects a variable. For no color axis, set to \code{NULL}.
 Can be character or list. See \code{shapviz} \link[shapviz]{sv_dependence()}
 for more details.}
 
-\item{color}{The color to use for the points in the dependence plot. Must be a valid
-ggplot color or hex code. Default is "#3b528b".}
+\item{viridis_args}{Additional arguments passed to \code{viridis} for customizing the color scale
+in the beeswarm plot.
+Default is \code{list(begin = 0.25, end = 0.75, option = "viridis")}.}
 }
 \value{
 A \code{\link[ggplot2]{ggplot2}} object representing the dependence plot.

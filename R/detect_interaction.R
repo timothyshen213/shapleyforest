@@ -14,7 +14,7 @@
 #' @return A dataframe of potential pairwise interactions
 #' 
 #' @export
-detect_interaction <- function(object, thresh, all=FALSE, verbose=FALSE) {
+detect_interaction <- function(object, thresh, all=FALSE, verbose=TRUE) {
   cat("Note: fastshap does not inherently calculate interaction. These are estimates. \n")
   names <- object$final_SHAP[[1]]
   shap <- object$shap_obj

@@ -108,8 +108,9 @@ plot_importance.shap_fuzzy_forest <- function(object, kind = "beeswarm",
 #'                      automatically selects a variable. For no color axis, set to \code{NULL}.
 #'                      Can be character or list. See \code{shapviz} \link[shapviz]{sv_dependence()}
 #'                      for more details.
-#' @param color         The color to use for the points in the dependence plot. Must be a valid 
-#'                      ggplot color or hex code. Default is "#3b528b".
+#' @param viridis_args    Additional arguments passed to `viridis` for customizing the color scale 
+#'                        in the beeswarm plot. 
+#'                        Default is `list(begin = 0.25, end = 0.75, option = "viridis")`.
 #'
 #' @return A \code{\link[ggplot2]{ggplot2}} object representing the dependence plot.
 #'
@@ -126,7 +127,9 @@ plot_dependence <- function(object, ...) {
 #'   Dependence plot for an object of class "shap_fuzzy_forest" through `shapviz`.
 #' @export
 plot_dependence.shap_fuzzy_forest <- function(object, features, color_var = "auto",
-                                              color = "#3b528b", ...){
+                                              viridis_args = list(begin = 0.25, 
+                                                                  end = 0.75, 
+                                                                  option = "viridis"), ...){
   shap <- object$shap_obj
   shap_object <- shapviz(shap)
 
@@ -144,7 +147,8 @@ plot_dependence.shap_fuzzy_forest <- function(object, features, color_var = "aut
   if (is_valid_color(color)== FALSE) {
     stop("color must be a valid ggplot color or hex code")
   }
-  dependence_plot <- sv_dependence(shap_object, v = features, color_var = color_var, color = color)
+  dependence_plot <- sv_dependence(shap_object, v = features, color_var = color_var, 
+                                   viridis_args = viridis_args)
   print(dependence_plot)
 }
 
@@ -231,7 +235,7 @@ plot_waterfall.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_
     stop("show_connection must be boolean")
   }
   if (!is.logical(show_annotation)){
-    stop("show_annotations must be boolean")
+    stop("show_annotation must be boolean")
   }
   
   waterfall_plot <- sv_waterfall(shap_object,row_id,max_display = max_display, 
@@ -339,8 +343,8 @@ plot_force.shap_fuzzy_forest <- function(object, row_id, row_name=NULL, max_disp
   if (!is.numeric(bar_label_size)){
     stop("bar_label_size must be numerical")
   }
-  if (!is.logical(show_annotations)){
-    stop("show_annotations must be boolean")
+  if (!is.logical(show_annotation)){
+    stop("show_annotation must be boolean")
   }
   force_plot <- sv_force(shap_object, row_id, max_display = max_display, 
                          fill_colors = fill_colors, contrast = contrast, 
