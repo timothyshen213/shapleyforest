@@ -14,6 +14,10 @@
 #'                          If `0`, \code{shapff} model runs SHAPley values at the end
 #'                          of final model and keeps permutation VIMs usage at other steps.
 #'                          `1` is default.
+#' @param shap_type         Final SHAP calculation method. If `shapley`, \link[fastshap]{fastshap}
+#'                          will be ran. If `tree`, \link[treeshap]{treeshap} will be ran. 
+#'                          Running treeshap will have longer runtime, but allows for interaction values
+#'                          and plots to be used.
 #' @param module_membership A vector that specifies the module membership for each
 #'                          each feature.
 #' @param screen_params     Defines the parameter settings for the screening step
@@ -64,7 +68,7 @@
 #' @importFrom randomForest combine
 
 
-shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
+shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_membership,
                     screen_params = fuzzyforest:::screen_control(min_ntree=5000),
                     select_params = fuzzyforest:::select_control(min_ntree=5000),
                     final_ntree = 5000,
@@ -222,10 +226,10 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
   #Selection step via SHAP values
   if (shap_model == 1){
     select_results <- shapselect_RF(select_args$X, select_args$y, select_args$drop_fraction, 
-                                     select_args$number_selected, select_args$mtry_factors,
-                                     select_args$ntree_factor, select_args$min_ntree,
-                                     select_args$num_processors, select_args$nodesize, select_args$cl,
-                                     nsim = nsim)
+                                    select_args$number_selected, select_args$mtry_factors,
+                                    select_args$ntree_factor, select_args$min_ntree,
+                                    select_args$num_processors, select_args$nodesize, select_args$cl,
+                                    nsim = nsim)
   }
   #Selection step via permutation vims
   if (shap_model == 0){
@@ -269,16 +273,27 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
                            importance=TRUE, nodesize=nodesize,
                            xtest=test_features, ytest=test_y)
   final_module_membership <- as.data.frame(cbind(names(X), module_membership),
-                                     stringsAsFactors=FALSE)
+                                           stringsAsFactors=FALSE)
   names(final_module_membership) <- c("feature_name", "module")
   
   #Final SHAP value calculation
-  shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
-                                  pred_wrapper = predict, shap_only = FALSE)
-  shap_final <- shap_final_obj$shapley_values
-  var_importance_final <- colMeans(abs(shap_final))
-  var_importance_final <- sort(var_importance_final, decreasing = TRUE)
-  var_importance_final <- data.frame(vim = var_importance_final)
+  if (shap_type == "shapley"){
+    shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
+                                        pred_wrapper = predict, shap_only = FALSE)
+    shap_final <- shap_final_obj$shapley_values
+    var_importance_final <- colMeans(abs(shap_final))
+    var_importance_final <- sort(var_importance_final, decreasing = TRUE)
+    var_importance_final <- data.frame(vim = var_importance_final)
+  }
+  if (shap_type == "tree"){
+    unified_model <- randomForest.unify(final_rf, final_X)
+    shap_final_obj <- treeshap::treeshap(unified_model, x = final_X, 
+                                         interactions = TRUE, verbose = FALSE)
+    shap_final <- shap_final_obj$shaps
+    var_importance_final <- colMeans(abs(shap_final))
+    var_importance_final <- sort(var_importance_final, decreasing = TRUE)
+    var_importance_final <- data.frame(vim = var_importance_final)
+  }
   shap_final_list <- data.frame(feature_name = rownames(var_importance_final),
                                 variable_importance = var_importance_final[,1])
   shap_final_list[, 2] <- round(as.numeric(shap_final_list[, 2]), 4)
@@ -286,7 +301,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
   shap_final_list <- as.data.frame(shap_final_list, stringsAsFactors=FALSE)
   shap_final_list[, 2] <- as.numeric(shap_final_list[, 2])
   shap_final_list <- cbind(shap_final_list, rep(".", dim(shap_final_list)[1]),
-                      stringsAsFactors=FALSE)
+                           stringsAsFactors=FALSE)
   names(shap_final_list)[3] <- c("module_membership")
   
   select_X <- names(X)[which(names(X) %in% shap_final_list[, 1])]
@@ -294,13 +309,13 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
   select_order <- shap_final_list[, 1][which(shap_final_list[,1] %in% names(X))]
   select_mods <- select_mods[match(select_order, select_X)]
   shap_final_list[, 3][shap_final_list[, 1] %in% names(final_X)] <- select_mods
-
+  
   out <- shap_fuzzy_forest(final_rf, final_module_membership,
-                                    survivor_list=survivor_list,
-                                    selection_list=selection_list, 
-                                    final_shap = shap_final_list,
-                                    shap_obj = shap_final_obj,
-                                    final_X = final_X)
+                           survivor_list=survivor_list,
+                           selection_list=selection_list, 
+                           final_shap = shap_final_list,
+                           shap_obj = shap_final_obj,
+                           final_X = final_X)
   
   cat("Done \n")
   
@@ -325,6 +340,10 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
 #'                          If `0`, \code{shapff} model runs SHAPley values at the end
 #'                          of final model and keeps permutation VIMs usage at other steps.
 #'                          `1` is default.
+#' @param shap_type         Final SHAP calculation method. If `shapley`, \link[fastshap]{fastshap}
+#'                          will be ran. If `tree`, \link[treeshap]{treeshap} will be ran. 
+#'                          Running treeshap will have longer runtime, but allows for interaction values
+#'                          and plots to be used.
 #' @param WGCNA_params      WGCNA parameters.
 #'                          See \code{\link[WGCNA]{blockwiseModules}} and
 #'                          \code{\link[fuzzyforest]{WGCNA_control}} for details.
@@ -421,7 +440,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, module_membership,
 #' }
 #' 
 
-shapwff <- function(X, y, Z=NULL, shap_model = 1, WGCNA_params=WGCNA_control(p=6),
+shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_params=WGCNA_control(p=6),
                      screen_params=fuzzyforest:::screen_control(min_ntree=5000),
                      select_params=fuzzyforest:::select_control(min_ntree=5000),
                      final_ntree=500, num_processors, parallel=1, nodesize,
@@ -473,7 +492,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, WGCNA_params=WGCNA_control(p=6
   screen_ntree_factor <- screen_control$ntree_factor
   screen_min_ntree <- screen_control$min_ntree
   cat("Screening Step ... \n")
-  out <- shapff(X, y, Z, shap_model, module_membership,
+  out <- shapff(X, y, Z, shap_model, shap_type, module_membership,
                  screen_control, select_control, final_ntree,
                  num_processors, nodesize=nodesize,
                  test_features=test_features, test_y=test_y)

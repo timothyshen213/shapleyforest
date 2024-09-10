@@ -9,6 +9,7 @@ shapwff(
   y,
   Z = NULL,
   shap_model = 1,
+  shap_type = "shapley",
   WGCNA_params = WGCNA_control(p = 6),
   screen_params = fuzzyforest:::screen_control(min_ntree = 5000),
   select_params = fuzzyforest:::select_control(min_ntree = 5000),
@@ -40,6 +41,11 @@ runs SHAPley values at both screening and selection step.
 If \code{0}, \code{shapff} model runs SHAPley values at the end
 of final model and keeps permutation VIMs usage at other steps.
 \code{1} is default.}
+
+\item{shap_type}{Final SHAP calculation method. If \code{shapley}, \link[fastshap]{fastshap}
+will be ran. If \code{tree}, \link[treeshap]{treeshap} will be ran.
+Running treeshap will have longer runtime, but allows for interaction values
+and plots to be used.}
 
 \item{WGCNA_params}{WGCNA parameters.
 See \code{\link[WGCNA]{blockwiseModules}} and

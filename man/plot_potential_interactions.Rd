@@ -3,11 +3,25 @@
 \name{plot_potential_interactions}
 \alias{plot_potential_interactions}
 \alias{plot_potential_interactions.shap_fuzzy_forest}
+\alias{plot_interactions.shap_fuzzy_forest}
 \title{Plot Potential Interaction Matrix in SHAP Fuzzy Forests}
 \usage{
 plot_potential_interactions(object, ...)
 
 \method{plot_potential_interactions}{shap_fuzzy_forest}(object, ...)
+
+\method{plot_interactions}{shap_fuzzy_forest}(
+  object,
+  kind = "beeswarm",
+  max_display = "Inf",
+  alpha = 0.3,
+  bee_width = 0.3,
+  bee_adjust = 0.5,
+  viridis_args = list(begin = 0.25, end = 0.75, option = "viridis"),
+  color_bar_title = "Row feature value",
+  sort_features = TRUE,
+  ...
+)
 }
 \arguments{
 \item{object}{A SHAP Fuzzy Forest object.}
@@ -23,5 +37,10 @@ Interactions is calculated from \code{shapviz}'s
 \section{Methods (by class)}{
 \itemize{
 \item \code{plot_potential_interactions(shap_fuzzy_forest)}: Potential Interaction Matrix of class "shap_fuzzy_forest" through \code{shapviz}.
+
+}}
+\section{Functions}{
+\itemize{
+\item \code{plot_interactions(shap_fuzzy_forest)}: Potential Interaction Matrix of class "shap_fuzzy_forest" through \code{shapviz}.
 
 }}

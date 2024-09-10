@@ -11,6 +11,7 @@ plot_dependence(object, ...)
   object,
   features,
   color_var = "auto",
+  interaction = FALSE,
   viridis_args = list(begin = 0.25, end = 0.75, option = "viridis"),
   ...
 )
@@ -25,6 +26,10 @@ Can be character or list.}
 automatically selects a variable. For no color axis, set to \code{NULL}.
 Can be character or list. See \code{shapviz} \link[shapviz]{sv_dependence()}
 for more details.}
+
+\item{interaction}{To plot interaction values between \code{features} and \code{color_var}. Now note, including
+\code{features} in \code{color_var}, those corresponding will tree \code{color_var} = NULL and plot
+the main effect.}
 
 \item{viridis_args}{Additional arguments passed to \code{viridis} for customizing the color scale
 in the beeswarm plot.

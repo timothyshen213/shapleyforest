@@ -111,7 +111,9 @@ plot_importance.shap_fuzzy_forest <- function(object, kind = "beeswarm",
 #' @param viridis_args    Additional arguments passed to `viridis` for customizing the color scale 
 #'                        in the beeswarm plot. 
 #'                        Default is `list(begin = 0.25, end = 0.75, option = "viridis")`.
-#'
+#' @param interaction  To plot interaction values between `features` and `color_var`. Now note, including
+#'                     `features` in `color_var`, those corresponding will tree `color_var` = NULL and plot
+#'                     the main effect.
 #' @return A \code{\link[ggplot2]{ggplot2}} object representing the dependence plot.
 #'
 #' @import ggplot2
@@ -127,17 +129,26 @@ plot_dependence <- function(object, ...) {
 #'   Dependence plot for an object of class "shap_fuzzy_forest" through `shapviz`.
 #' @export
 plot_dependence.shap_fuzzy_forest <- function(object, features, color_var = "auto",
+                                              interaction = FALSE,
                                               viridis_args = list(begin = 0.25, 
                                                                   end = 0.75, 
                                                                   option = "viridis"), ...){
   shap <- object$shap_obj
-  shap_object <- shapviz(shap)
+  shap_object <- shapviz(shap, X = object$final_X, interactions = TRUE)
   
+  if (class(shap) != "treeshap"){
+    stop("shapley method must be treeshap. set shap_type `tree` in shapff()/shapwff()")
+  }
   if (!all(features %in% colnames(shap_object))){
     stop("feature(s) are not in final surviving features")
   }
+  
+  if (!is.logical(interaction)){
+    stop("interaction must be boolean")
+  }
+
   dependence_plot <- sv_dependence(shap_object, v = features, color_var = color_var, 
-                                   viridis_args = viridis_args)
+                                   interactions = interaction, viridis_args = viridis_args)
   print(dependence_plot)
 }
 
@@ -396,4 +407,95 @@ plot_potential_interactions.shap_fuzzy_forest <- function(object,...){
     labs(x = "FeatureA", y = "FeatureB", title = "Potential Interactions")
   
 }
+
+#' Plot Interaction Plot from SHAP Fuzzy Forest
+#'
+#' Generates an interaction plot from SHAP interaction values.
+#' Interactions is generated from \code{shapviz}. Note this requires
+#' setting \code{shap_type} = `tree` when running \code{shapff} or \code{shapwff}.
+#' @export
+#' @param object          A SHAP Fuzzy Forest object.
+#'                        
+#' @return A ggplot2 object representing the SHAP potential interaction matrix.
+#' 
+#' @export
+plot_interactions <- function(object,...){
+  UseMethod("plot_interactions")
+}
+
+#' @describeIn plot_potential_interactions
+#'   Potential Interaction Matrix of class "shap_fuzzy_forest" through `shapviz`.
+#' @export
+plot_interactions.shap_fuzzy_forest <- function(object, kind = "beeswarm", max_display = "Inf", 
+                                                alpha=0.3, bee_width = 0.3, bee_adjust = 0.5,
+                                                viridis_args = list(begin = 0.25, 
+                                                                    end = 0.75, 
+                                                                    option = "viridis"),
+                                                color_bar_title = "Row feature value",
+                                                sort_features = TRUE, ...){
+  shap <- object$shap_obj
+  shap_object <- shapviz(shap, X = object$final_X, interactions = TRUE)
+  
+  if (class(shap) != "treeshap"){
+    stop("shapley method must be treeshap. set shap_type `tree` in shapff()/shapwff()")
+  }
+  if (kind != "beeswarm" && kind != "matrix"){
+    stop("kind must be `beeswarm` or `matrix`")
+  }
+  
+  if (!is.character(color_bar_title)) {
+    stop("color_bar_title must be a string")
+  }
+  
+  if (!is.numeric(max_display) && max_display != "Inf"){
+    stop("max_display must be numeric or `Inf`")
+  }
+  if (max_display > length(colnames(shap_object))){
+    stop("max_display must be less than total surviving features")
+  }
+  
+  if (!is.logical(sort_features)){
+    stop("sort_features must be boolean")
+  }
+  
+  if (kind == "beeswarm"){
+    interaction_plot <- sv_interaction(shap_object,kind = "beeswarm", max_display, 
+                                       alpha, bee_width, bee_adjust,
+                                       viridis_args, color_bar_title,
+                                       sort_features) +
+      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+    
+    plot_name <- paste0("Interaction Plot")
+    interaction_plot <- interaction_plot + 
+      ggtitle(plot_name) +
+      theme(plot.title = element_text(size = 14, hjust = 0.5))
+    
+    print(interaction_plot)
+  }
+  
+  if (kind == "matrix"){
+    interaction_matrix <- sv_interaction(shap_object,kind = "no", max_display, 
+                                       sort_features)
+    diag(interaction_matrix) <- NA
+    interaction_matrix <- melt(interaction_matrix)
+    
+    max <- max(na.omit(interaction_matrix$value))
+    matrix <- ggplot(interaction_matrix, aes(Var1, Var2, fill = value)) +
+      geom_tile(color = "white") +
+      scale_fill_gradient2(low = "blue", high = "red",
+                           midpoint = 0, limit = c(0, max), space = "Lab", 
+                           name="SHAP Interaction Value", na.value = "white") +
+      geom_text(aes(label = round(value, 2)), color = "black", size = 3) +  
+      ggtitle("Interaction Matrix") + 
+      xlab(NULL) +  
+      ylab(NULL) +  
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+            plot.title = element_text(hjust = 0.5))
+    print(matrix)
+    return(interaction_matrix)
+  }
+}
+  
+  
 
