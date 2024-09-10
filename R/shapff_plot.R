@@ -450,7 +450,7 @@ plot_interactions.shap_fuzzy_forest <- function(object, kind = "beeswarm", max_d
   if (!is.numeric(max_display) && max_display != "Inf"){
     stop("max_display must be numeric or `Inf`")
   }
-  if (max_display > length(colnames(shap_object))){
+  if (max_display != "Inf" && max_display > length(colnames(shap_object))){
     stop("max_display must be less than total surviving features")
   }
   
