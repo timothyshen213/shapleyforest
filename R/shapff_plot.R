@@ -497,5 +497,127 @@ plot_interactions.shap_fuzzy_forest <- function(object, kind = "beeswarm", max_d
   }
 }
   
+#' Plot Decision Plot from SHAP Fuzzy Forest
+#'
+#' TO DO
+#' 
+#' @export
+#' @param object          A SHAP Fuzzy Forest object.
+#'                        
+#' @return A ggplot2 object representing the SHAP potential interaction matrix.
+#' 
+#' @export
+plot_decisions <- function(object,...){
+  UseMethod("plot_decisions")
+}
+
+#' @describeIn plot_decisions
+#'   TO DO.
+#' @export
+plot_decisions.shap_fuzzy_forest <- function(object, highlight = NULL, plot_title = "Decision Plot", 
+                                             geom_point = FALSE, 
+                                             gradient = c("blue", "red"), ...){
+
+  if (object$shap_method == "shapley"){
+    shap_values <- object$shap_obj$shapley_values
+  }
   
+  if (object$shap_method == "tree"){
+    shap_values <- object$shap_obj$shaps
+  }
+  feature_names <- colnames(shap_values)
+  if (!is.null(highlight)){
+    if (is.numeric(highlight)){
+      if (all(highlight <= 1 & highlight >= nrow(shap_values))){
+        stop("highlighted instance id(s) not within range")
+      }
+    }
+    
+    if (is.character(highlight)){
+      if (!all(highlight %in% feature_name)){
+        stop("highlighted instance(s) not valid variable name")
+      }
+    }
+    
+    if (!is.character(highlight) && !is.numeric(highlight)){
+      stop("highlight must be a character or numeric vector")
+    }
+  }
+  
+  
+  if (!is.character(plot_title)){
+    stop("plot_title must be character string. see ggplot2")
+  }
+  
+  if (!is.logical(geom_point)){
+    stop("geom_point must be boolean. help(plot_decisions)")
+  }
+  
+  base_value <- mean(predict(object$final_rf, object$final_X))
+  prediction_out <- predict(object$final_rf, object$final_X)
+  feature_values <- object$final_X
+  
+  shap_df <- as.data.frame(shap_values)
+  colnames(shap_df) <- feature_names
+  
+  shap_df$Observation <- 1:nrow(shap_df)
+  shap_long <- melt(shap_df, id.vars = "Observation", variable.name = "Feature", value.name = "SHAP")
+  
+  feature_importance <- colMeans(abs(shap_values))  
+  feature_names <- names(sort(feature_importance, decreasing = FALSE))
+  shap_long$Feature <- factor(shap_long$Feature, levels = feature_names)
+  
+  shap_long <- shap_long %>%
+    group_by(Observation) %>%
+    arrange(Feature) %>%  
+    mutate(Cumulative_SHAP = cumsum(SHAP))  
+  
+  start <- data.frame(
+    Observation = 1:nrow(shap_df),
+    Feature = "",  
+    SHAP = 0,  
+    Cumulative_SHAP = 0  
+  )
+  
+  shap_long <- bind_rows(start, shap_long)
+  shap_long$Feature <- factor(shap_long$Feature, levels = c("", feature_names))
+  last_shap_values <- shap_long %>%
+    group_by(Observation) %>%
+    summarize(Last_Cumulative_SHAP = last(Cumulative_SHAP))
+  shap_long <- shap_long %>%
+    left_join(last_shap_values, by = "Observation")
+  
+  if (!is.null(highlight)){
+    shap_long <- shap_long %>% filter(Observation %in% highlight)  
+  }
+  if (geom_point == FALSE){
+    decision_plot <- ggplot(shap_long, aes(x = Cumulative_SHAP, y = Feature, group = Observation)) +
+      geom_path(aes(color = Last_Cumulative_SHAP), size = 1) +  
+      geom_vline(xintercept = base_value, color = "#999999", linetype = "dashed") +  
+      scale_color_gradient(low = gradient[1], high = gradient[2]) + 
+      theme_minimal() +
+      labs(title = "Decision Plot",
+           x = "Cumulative SHAP Value",
+           y = "Feature",
+           color = "Predicted Output") +
+      theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 10))
+  }
+  
+  if (geom_point == TRUE){
+    decision_plot <- ggplot(shap_long, aes(x = Cumulative_SHAP, y = Feature, group = Observation)) +
+      geom_path(aes(color = Last_Cumulative_SHAP), size = 1) +  
+      geom_point(size = 2) + 
+      geom_vline(xintercept = base_value, color = "#999999", linetype = "dashed") +  
+      scale_color_gradient(low = gradient[1], high = gradient[2]) +  
+      theme_minimal() +
+      labs(title = "Decision Plot",
+           x = "Cumulative SHAP Value",
+           y = "Feature",
+           color = "Predicted Output") +
+      theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 10))
+  }
+  
+  
+  print(decision_plot)
+}
 

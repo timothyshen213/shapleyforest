@@ -15,8 +15,8 @@
 #' @param shap_obj          Final shap object from the final surviving features
 #' @return An object of type fuzzy_forest.
 shap_fuzzy_forest <- function(final_rf, final_X, module_membership,
-                         WGCNA_object=NULL, survivor_list, selection_list, 
-                         final_shap, shap_obj) {
+                              WGCNA_object=NULL, survivor_list, selection_list, 
+                              final_shap, shap_obj) {
   out <- list()
   out[[1]] <- final_rf
   out[[2]] <- final_X
@@ -32,6 +32,7 @@ shap_fuzzy_forest <- function(final_rf, final_X, module_membership,
   class(out) <- "shap_fuzzy_forest"
   return(out)
 }
+
 
 
 #' Prints output from fuzzy forests algorithm.

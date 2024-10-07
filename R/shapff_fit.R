@@ -69,12 +69,12 @@
 
 
 shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_membership,
-                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
-                    select_params = fuzzyforest:::select_control(min_ntree=5000),
-                    final_ntree = 5000,
-                    num_processors = 1, parallel = 1, nodesize, 
-                    test_features=NULL, test_y=NULL, nsim = 1, 
-                    final_nsim = 100) {
+                   screen_params = fuzzyforest:::screen_control(min_ntree=5000),
+                   select_params = fuzzyforest:::select_control(min_ntree=5000),
+                   final_ntree = 5000,
+                   num_processors = 1, parallel = 1, nodesize, 
+                   test_features=NULL, test_y=NULL, nsim = 1, 
+                   final_nsim = 100) {
   if(!is.null(Z)) {
     if (!is.data.frame(Z)) {
       stop("Z must be a data.frame.",
@@ -441,10 +441,10 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
 #' 
 
 shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_params=WGCNA_control(p=6),
-                     screen_params=fuzzyforest:::screen_control(min_ntree=5000),
-                     select_params=fuzzyforest:::select_control(min_ntree=5000),
-                     final_ntree=500, num_processors, parallel=1, nodesize,
-                     test_features=NULL, test_y=NULL, nsim=1, final_nsim=100) {
+                    screen_params=fuzzyforest:::screen_control(min_ntree=5000),
+                    select_params=fuzzyforest:::select_control(min_ntree=5000),
+                    final_ntree=500, num_processors, parallel=1, nodesize,
+                    test_features=NULL, test_y=NULL, nsim=1, final_nsim=100) {
   #browser()
   if ( !("package:WGCNA" %in% search()) ) {
     stop("WGCNA must be loaded and attached. Type library(WGCNA) to do so.",
@@ -493,9 +493,10 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
   screen_min_ntree <- screen_control$min_ntree
   cat("Screening Step ... \n")
   out <- shapff(X, y, Z, shap_model, shap_type, module_membership,
-                 screen_control, select_control, final_ntree,
-                 num_processors, nodesize=nodesize,
-                 test_features=test_features, test_y=test_y)
+                screen_control, select_control, final_ntree,
+                num_processors, nodesize=nodesize,
+                test_features=test_features, test_y=test_y)
   out$WGCNA_object <- bwise
+  out$shap_method <- shap_type
   return(out)
 }
