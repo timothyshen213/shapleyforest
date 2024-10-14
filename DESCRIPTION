@@ -3,7 +3,6 @@ Title: SHAPley Fuzzy Forest
 Version: 0.1.0
 Authors@R: 
     person("Timothy", "Shen", , "tzshen@g.ucla.edu", role = c("aut", "cre"))
-    person("Christina", "Ramirez", role = c("aut", "cre"))
 Description: An interpretable random-forest based feature selection algorithm for high-dimensional and correlated datasets.
 Imports:
     fuzzyforest (>= 1.0.0),
