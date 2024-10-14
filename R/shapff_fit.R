@@ -315,7 +315,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
                            selection_list=selection_list, 
                            final_shap = shap_final_list,
                            shap_obj = shap_final_obj,
-                           final_X = final_X)
+                           final_X = final_X, shap_type = shap_type)
   
   cat("Done \n")
   
@@ -497,6 +497,5 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
                 num_processors, nodesize=nodesize,
                 test_features=test_features, test_y=test_y)
   out$WGCNA_object <- bwise
-  out$shap_method <- shap_type
   return(out)
 }

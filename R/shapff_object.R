@@ -16,7 +16,7 @@
 #' @return An object of type fuzzy_forest.
 shap_fuzzy_forest <- function(final_rf, final_X, module_membership,
                               WGCNA_object=NULL, survivor_list, selection_list, 
-                              final_shap, shap_obj) {
+                              final_shap, shap_obj, shap_type) {
   out <- list()
   out[[1]] <- final_rf
   out[[2]] <- final_X
@@ -26,9 +26,10 @@ shap_fuzzy_forest <- function(final_rf, final_X, module_membership,
   out[[6]] <- selection_list
   out[[7]] <- final_shap
   out[[8]] <- shap_obj
+  out[[9]] <- shap_type
   names(out) <- c("final_rf", "final_X", "module_membership",
                   "WGCNA_object", "survivor_list", "selection_list",
-                  "final_SHAP", "shap_obj")
+                  "final_SHAP", "shap_obj", "shap_type")
   class(out) <- "shap_fuzzy_forest"
   return(out)
 }
