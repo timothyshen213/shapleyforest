@@ -99,6 +99,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     }
   }
   
+  
   screen_control <- screen_params
   select_control <-  select_params
   module_list <- unique(module_membership)
@@ -168,6 +169,23 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
       
       #Feature selection via fastshap
       if (shap_model == 1){
+        if (CLASSIFICATION == TRUE){
+          num_classes <- nlevels(y)
+          if (num_classes == 2){
+            predict <- function(object, newdata) {
+              prob <- predict(object, newdata = newdata)
+              return(prob[, 2])
+            }
+            
+          }
+          else if (num_classes > 2) {
+              prob <- predict(object, newdata = newdata, type = "prob")
+              return(prob) 
+          } else {
+              stop("Invalid or single-class data in y")
+          }
+        }
+        print(predict)
         shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = predict))
         var_importance <- colMeans(abs(shap))
         var_importance <- sort(var_importance, decreasing = TRUE)
@@ -226,7 +244,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
   #Selection step via SHAP values
   if (shap_model == 1){
     select_results <- shapselect_RF(select_args$X, select_args$y, select_args$drop_fraction, 
-                                    select_args$number_selected, select_args$mtry_factors,
+                                    select_args$number_selected, CLASSIFICATION, select_args$mtry_factors,
                                     select_args$ntree_factor, select_args$min_ntree,
                                     select_args$num_processors, select_args$nodesize, select_args$cl,
                                     nsim = nsim)
@@ -278,6 +296,20 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
   
   #Final SHAP value calculation
   if (shap_type == "shapley"){
+    if (CLASSIFICATION == TRUE){
+      predict <- function(object, newdata) {
+        num_classes <- nlevels(y)
+        if (num_classes == 2) {
+          prob <- predict(object, newdata = newdata, type = "prob")
+          return(prob[, 2])
+        } else if (num_classes > 2) {
+          prob <- predict(object, newdata = newdata, type = "prob")
+          return(as.matrix(prob)) 
+        } else {
+          stop("Invalid or single-class data in y")
+        }
+      }
+    }
     shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
                                         pred_wrapper = predict, shap_only = FALSE)
     shap_final <- shap_final_obj$shapley_values

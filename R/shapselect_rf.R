@@ -39,7 +39,7 @@
 #' @importFrom randomForest combine
 #' @return A data.frame with the top ranked features.
 
-shapselect_RF <- function(X, y, drop_fraction, number_selected, mtry_factor,
+shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, mtry_factor,
                           ntree_factor, min_ntree,
                           num_processors, nodesize, cl, nsim) {
   selection_list <- list()
@@ -67,6 +67,20 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, mtry_factor,
       rf <- randomForest(current_X, y, ntree = ntree, mtry = mtry,
                          importance = TRUE, scale = FALSE,
                          nodesize = nodesize)
+    }
+    if (CLASSIFICATION == TRUE){
+      predict <- function(object, newdata) {
+        num_classes <- nlevels(y)
+        if (num_classes == 2) {
+          prob <- predict(object, newdata = newdata, type = "prob")
+          return(prob[, 2])
+        } else if (num_classes > 2) {
+          prob <- predict(object, newdata = newdata, type = "prob")
+          return(as.matrix(prob)) 
+        } else {
+          stop("Invalid or single-class data in y")
+        }
+      }
     }
     shap <- fastshap::explain(rf, X = current_X, nsim = nsim, pred_wrapper = predict)
     var_importance <- colMeans(abs(shap))
