@@ -620,25 +620,25 @@ plot_decisions.shap_fuzzy_forest <- function(object, highlight = NULL, plot_titl
   
   print(decision_plot)
 }
-
-#' Plots relative importance of modules.
+#' Plot Module Plot from SHAPley Forest
 #'
-#' The plot is designed
-#' to depict the size of each module and what percentage of selected
-#' features fall into each module.  In particular, it is easy to
-#' determine which module is over-represented in the group of selected
-#' features.
+#' The plot function is derived from \link[fuzzyforest]{fuzzyforest}'s modplot function.
+#' TO DO
+#' 
 #' @export
-#' @param object   A shap_fuzzy_forest object.
-#' @param main Title of plot.
-#' @param xlab Title for the x axis.
-#' @param ylab Title for the y axis.
-#' @param module_labels Labels for the modules.  A data.frame
-#'                      or character matrix with first column giving
-#'                      the current name of module and second column giving
-#'                      the assigned name of each module.
-modplot <- function(object, main=NULL, xlab=NULL, ylab=NULL,
-                    module_labels=NULL) {
+#' @param object          A SHAPley Forest object.
+#'                        
+#' @return A ggplot object representing the module membership distribution colored by importance.
+#' 
+#' @export
+plot_modules <- function(object,...){
+  UseMethod("plot_modules")
+}
+#' @describeIn plot_modules
+#'   TO DO.
+#' @export
+plot_modules.shap_fuzzy_forest <- function(object, main=NULL, xlab=NULL, ylab=NULL,
+                    module_labels=NULL, ...) {
   if(is.null(main)) {
     main <- "Module Membership Distribution"
   }
@@ -648,74 +648,79 @@ modplot <- function(object, main=NULL, xlab=NULL, ylab=NULL,
   if(is.null(ylab)) {
     ylab <- "Percentage of features in module"
   }
+  
+  #allows user to supply new names for modules
   if(!is.null(module_labels)) {
-    old_labels <- object$module_membership[, 2]
-    new_labels <- as.factor(old_labels)
+    old_labels <- object$module_membership$module
+    #module_labels should be re-ordered so that the old labels are in
+    #alphabetical order.  This is because factor(old_labels) has levels in
+    #alphabetical order. Note that the `labels` below is contains new labels.
     module_labels <- module_labels[order(module_labels[, 1]), ]
-    levels(new_labels) <- module_labels[, 2]
-    new_labels <- as.character(new_labels)
-    object$module_membership[, 2] <- new_labels
+    new_labels <- as.character(factor(old_labels, labels=module_labels[, 2]))
+    object$module_membership$module <- new_labels
     
-    select_mods <- as.factor(object$feature_list[, 3])
-    select_key <- module_labels[which(module_labels[, 1] %in% levels(select_mods)), ,drop=FALSE]
+    #Now module labels need to be changed for the table of variable importances.
+    select_mods <- as.factor(object$feature_list$module_membership)
+    select_module_table <- module_labels[which(module_labels[, 1] %in%
+                                                 levels(select_mods)), ,drop=FALSE]
+    
+    #This line of code may be slightly dangerous depending on where "." is.
+    #It should be ok because after removing "." the remaining levels are in
+    #alphabetical order.
     if( "." %in% levels(select_mods)) {
-      levels(select_mods)[-1] <- select_key[, 2]
+      dot_index <- which(levels(select_mods) == ".")
+      levels(select_mods)[-dot_index] <- select_module_table[, 2]
     }
     else {
-      levels(select_mods) <- select_key[, 2]
+      levels(select_mods) <- select_module_table[, 2]
     }
-    object$feature_list[, 3] <- as.character(select_mods)
+    object$final_SHAP$module_membership <- as.character(select_mods)
   }
-  shap_fuzzy_forest <- object
-  us_modules <- shap_fuzzy_forest$final_shap$module_membership
-  us_modules <- us_modules[us_modules != "."]
-  us_modules = as.data.frame(prop.table(table(us_modules))*100)
-  us_modules = cbind(us_modules, rep("us", nrow(us_modules)))
-  names(us_modules) = c("module", "percent", "type")
-  df = as.data.frame(prop.table(table(shap_fuzzy_forest$module_membership[, 2]))*100)
-  df = cbind(df, rep("overall", nrow(df)))
-  names(df) = c("module", "percent", "type")
-  df = rbind(df
-             , us_modules
-  )
-  #check to see if module names are numeric, if so put them in correct order
-  num_test <- suppressWarnings(as.numeric(object$module_membership$module))
-  if(sum(is.na(num_test))==0) {
-    levels(df[,1]) <- as.character(sort(as.numeric(levels(df[,1]))))
+  mods <- object$module_membership$module
+  mod_length <- length(mods)
+  mod_tab <- table(mods)
+  mod_name <- names(mod_tab)
+  final_shap <- object$final_SHAP$module_membership
+  #This line is here in the case that some covariates are not in a module
+  mod_feature_list <- final_shap[final_shap != "."]
+  #Table showing how many important features are in each selected module.
+  imp_feature_tab <- table(mod_feature_list)
+  imp_names <- names(imp_feature_tab)
+  feature_tab <- rep(0, length(mod_tab))
+  names(feature_tab) <- mod_name
+  for(i in 1:length(feature_tab)) {
+    if(mod_name[i] %in% names(imp_feature_tab)) {
+      feature_tab[i] <- imp_feature_tab[which(imp_names == mod_name[i])]
+    }
   }
-  module=5
-  percent=5
-  type=5
-  p_module_dist = ggplot(df
-                         , aes(x = module
-                               , y = percent
-                               , fill = type)
-  ) +
-    geom_bar(stat = "identity"
-             , position="dodge"
-             , colour = "#999999"
-    ) +
-    labs(list(title = main
-              , x = xlab
-              , y = ylab
-    )) +
-    theme(axis.line = element_line(colour = "black")
-          , panel.grid.major = element_blank()
-          , panel.grid.minor = element_blank()
-          , panel.border = element_blank()
-          , panel.background = element_blank()
-          , axis.text.y = element_text(size=10)
-          , axis.text.x = element_text(size=10)
-          , axis.title = element_text(size=12, face="bold")
-          , plot.title = element_text(size=14, face="bold")
-    ) +
-    scale_fill_manual(values = c("#CDC9C9", "#95C9FF")
-                      , name = "Category"
-                      , breaks=c("overall", "us")
-                      , labels = c("Overall", "Selected Features")
-    ) +
-    scale_y_continuous(expand=c(0,0))
-  plot(p_module_dist)
+  unimportant_pct <- (mod_tab - feature_tab)/mod_length
+  important_pct <- feature_tab/mod_length
+  mod_name <- rep(mod_name, 2)
+  pct <- c(unimportant_pct, important_pct)
+  pct_type <- rep(c("% Unimportant", "% Important"), each=length(mod_tab))
+  importance_pct <- data.frame(Module=mod_name, Status=pct_type,
+                               Percentage=pct)
+  #test whether labels are numeric
+  #reorder the labels if they are numeric
+  num_mods <- suppressWarnings(as.numeric(object$module_membership[, 2]))
+  num_test <- sum(is.na(num_mods))
+  if(num_test == 0) {
+    importance_pct[, 1] <- as.factor(importance_pct[, 1])
+    levels(importance_pct[, 1]) <- sort(unique(num_mods))
+  }
+  
+  #this is a work-around to get rid of notes in R CMD Check
+  #Probably a better way to address the issue
+  Module <- NULL
+  Percentage <- NULL
+  Status <- NULL
+  ###############
+  imp_plot <- ggplot(importance_pct, aes(x=Module, y=Percentage, fill=Status)) +
+    geom_bar(stat="identity") +
+    ggtitle(main) + labs(x = xlab, y = ylab) +
+    theme(plot.title = element_text(lineheight=.8, face="bold"),
+          legend.title = element_blank())
+  plot(imp_plot)
 }
 
 

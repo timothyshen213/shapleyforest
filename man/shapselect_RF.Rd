@@ -9,6 +9,7 @@ shapselect_RF(
   y,
   drop_fraction,
   number_selected,
+  CLASSIFICATION,
   mtry_factor,
   ntree_factor,
   min_ntree,

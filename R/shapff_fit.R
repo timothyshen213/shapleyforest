@@ -104,7 +104,6 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
   select_control <-  select_params
   module_list <- unique(module_membership)
   
-  #parallelization
   if(parallel == 1 && num_processors > 1) {
     cl = parallel::makeCluster(num_processors)
     doParallel::registerDoParallel(cl)
@@ -134,7 +133,6 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     setTxtProgressBar(progress_bar, i)
     module <- X[, which(module_membership == module_list[i]), drop=FALSE]
     num_features <- ncol(module)
-    #TUNING PARAMETER mtry_factor
     if(CLASSIFICATION == TRUE) {
       mtry <- min(ceiling(mtry_factor*num_features/3), num_features)
       if(missing(nodesize)){
@@ -187,7 +185,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
           }
           shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = prediction))
         }
-        if (CLASSIFICATION = FALSE){
+        if (CLASSIFICATION == FALSE){
           shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = predict))
         }
         var_importance <- colMeans(abs(shap))
@@ -298,7 +296,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
   names(final_module_membership) <- c("feature_name", "module")
   
   #Final SHAP value calculation
-  if (shap_type = "shapley"){
+  if (shap_type =="shapley"){
     if (CLASSIFICATION == TRUE){
         num_classes <- nlevels(y)
         if (num_classes == 2){

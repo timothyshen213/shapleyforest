@@ -86,13 +86,13 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, 
       }
       shap <- fastshap::explain(rf, X = current_X, nsim = nsim, 
                                           pred_wrapper = prediction, shap_only = FALSE)
+      var_importance <- colMeans(abs(shap$shapley_values))
     }
     if (CLASSIFICATION == FALSE){
       shap <- fastshap::explain(rf, X = current_X, nsim = nsim, 
                                           pred_wrapper = predict, shap_only = FALSE)
+      var_importance <- colMeans(abs(shap$shapley_values))
     }
-    print(shap)
-    var_importance <- colMeans(abs(shap))
     var_importance <- sort(var_importance, decreasing = TRUE)
     var_importance <- data.frame(Feature = var_importance)
     
