@@ -172,21 +172,24 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
         if (CLASSIFICATION == TRUE){
           num_classes <- nlevels(y)
           if (num_classes == 2){
-            predict <- function(object, newdata) {
-              prob <- predict(object, newdata = newdata)
-              return(prob[, 2])
+            prediction <- function(object, newdata) {
+              prob <- predict(object, newdata = newdata, type = "prob")
+              return(prob[,2])
             }
-            
           }
           else if (num_classes > 2) {
+            prediction <- function(object, newdata) {
               prob <- predict(object, newdata = newdata, type = "prob")
-              return(prob) 
+              return(prob)
+            }
           } else {
               stop("Invalid or single-class data in y")
           }
+          shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = prediction))
         }
-        print(predict)
-        shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = predict))
+        if (CLASSIFICATION = FALSE){
+          shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = predict))
+        }
         var_importance <- colMeans(abs(shap))
         var_importance <- sort(var_importance, decreasing = TRUE)
         var_importance <- data.frame(Feature = var_importance)
@@ -295,23 +298,30 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
   names(final_module_membership) <- c("feature_name", "module")
   
   #Final SHAP value calculation
-  if (shap_type == "shapley"){
+  if (shap_type = "shapley"){
     if (CLASSIFICATION == TRUE){
-      predict <- function(object, newdata) {
         num_classes <- nlevels(y)
-        if (num_classes == 2) {
-          prob <- predict(object, newdata = newdata, type = "prob")
-          return(prob[, 2])
-        } else if (num_classes > 2) {
-          prob <- predict(object, newdata = newdata, type = "prob")
-          return(as.matrix(prob)) 
+        if (num_classes == 2){
+          prediction <- function(object, newdata) {
+            prob <- predict(object, newdata = newdata, type = "prob")
+            return(prob[,2])
+          }
+        }
+        else if (num_classes > 2) {
+          prediction <- function(object, newdata) {
+            prob <- predict(object, newdata = newdata, type = "prob")
+            return(prob)
+          }
         } else {
           stop("Invalid or single-class data in y")
         }
-      }
+        shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
+                                            pred_wrapper = prediction, shap_only = FALSE)
     }
-    shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
-                                        pred_wrapper = predict, shap_only = FALSE)
+    if (CLASSIFICATION == FALSE){
+      shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
+                                          pred_wrapper = predict, shap_only = FALSE)
+    }
     shap_final <- shap_final_obj$shapley_values
     var_importance_final <- colMeans(abs(shap_final))
     var_importance_final <- sort(var_importance_final, decreasing = TRUE)

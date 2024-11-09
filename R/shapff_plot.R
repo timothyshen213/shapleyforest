@@ -621,3 +621,101 @@ plot_decisions.shap_fuzzy_forest <- function(object, highlight = NULL, plot_titl
   print(decision_plot)
 }
 
+#' Plots relative importance of modules.
+#'
+#' The plot is designed
+#' to depict the size of each module and what percentage of selected
+#' features fall into each module.  In particular, it is easy to
+#' determine which module is over-represented in the group of selected
+#' features.
+#' @export
+#' @param object   A shap_fuzzy_forest object.
+#' @param main Title of plot.
+#' @param xlab Title for the x axis.
+#' @param ylab Title for the y axis.
+#' @param module_labels Labels for the modules.  A data.frame
+#'                      or character matrix with first column giving
+#'                      the current name of module and second column giving
+#'                      the assigned name of each module.
+modplot <- function(object, main=NULL, xlab=NULL, ylab=NULL,
+                    module_labels=NULL) {
+  if(is.null(main)) {
+    main <- "Module Membership Distribution"
+  }
+  if(is.null(xlab)) {
+    xlab <- "Module"
+  }
+  if(is.null(ylab)) {
+    ylab <- "Percentage of features in module"
+  }
+  if(!is.null(module_labels)) {
+    old_labels <- object$module_membership[, 2]
+    new_labels <- as.factor(old_labels)
+    module_labels <- module_labels[order(module_labels[, 1]), ]
+    levels(new_labels) <- module_labels[, 2]
+    new_labels <- as.character(new_labels)
+    object$module_membership[, 2] <- new_labels
+    
+    select_mods <- as.factor(object$feature_list[, 3])
+    select_key <- module_labels[which(module_labels[, 1] %in% levels(select_mods)), ,drop=FALSE]
+    if( "." %in% levels(select_mods)) {
+      levels(select_mods)[-1] <- select_key[, 2]
+    }
+    else {
+      levels(select_mods) <- select_key[, 2]
+    }
+    object$feature_list[, 3] <- as.character(select_mods)
+  }
+  shap_fuzzy_forest <- object
+  us_modules <- shap_fuzzy_forest$final_shap$module_membership
+  us_modules <- us_modules[us_modules != "."]
+  us_modules = as.data.frame(prop.table(table(us_modules))*100)
+  us_modules = cbind(us_modules, rep("us", nrow(us_modules)))
+  names(us_modules) = c("module", "percent", "type")
+  df = as.data.frame(prop.table(table(shap_fuzzy_forest$module_membership[, 2]))*100)
+  df = cbind(df, rep("overall", nrow(df)))
+  names(df) = c("module", "percent", "type")
+  df = rbind(df
+             , us_modules
+  )
+  #check to see if module names are numeric, if so put them in correct order
+  num_test <- suppressWarnings(as.numeric(object$module_membership$module))
+  if(sum(is.na(num_test))==0) {
+    levels(df[,1]) <- as.character(sort(as.numeric(levels(df[,1]))))
+  }
+  module=5
+  percent=5
+  type=5
+  p_module_dist = ggplot(df
+                         , aes(x = module
+                               , y = percent
+                               , fill = type)
+  ) +
+    geom_bar(stat = "identity"
+             , position="dodge"
+             , colour = "#999999"
+    ) +
+    labs(list(title = main
+              , x = xlab
+              , y = ylab
+    )) +
+    theme(axis.line = element_line(colour = "black")
+          , panel.grid.major = element_blank()
+          , panel.grid.minor = element_blank()
+          , panel.border = element_blank()
+          , panel.background = element_blank()
+          , axis.text.y = element_text(size=10)
+          , axis.text.x = element_text(size=10)
+          , axis.title = element_text(size=12, face="bold")
+          , plot.title = element_text(size=14, face="bold")
+    ) +
+    scale_fill_manual(values = c("#CDC9C9", "#95C9FF")
+                      , name = "Category"
+                      , breaks=c("overall", "us")
+                      , labels = c("Overall", "Selected Features")
+    ) +
+    scale_y_continuous(expand=c(0,0))
+  plot(p_module_dist)
+}
+
+

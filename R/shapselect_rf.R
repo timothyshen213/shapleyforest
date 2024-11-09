@@ -69,20 +69,29 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, 
                          nodesize = nodesize)
     }
     if (CLASSIFICATION == TRUE){
-      predict <- function(object, newdata) {
-        num_classes <- nlevels(y)
-        if (num_classes == 2) {
+      num_classes <- nlevels(y)
+      if (num_classes == 2){
+        prediction <- function(object, newdata) {
           prob <- predict(object, newdata = newdata, type = "prob")
-          return(prob[, 2])
-        } else if (num_classes > 2) {
-          prob <- predict(object, newdata = newdata, type = "prob")
-          return(as.matrix(prob)) 
-        } else {
-          stop("Invalid or single-class data in y")
+          return(prob[,2])
         }
       }
+      else if (num_classes > 2) {
+        prediction <- function(object, newdata) {
+          prob <- predict(object, newdata = newdata, type = "prob")
+          return(prob)
+        }
+      } else {
+        stop("Invalid or single-class data in y")
+      }
+      shap <- fastshap::explain(rf, X = current_X, nsim = nsim, 
+                                          pred_wrapper = prediction, shap_only = FALSE)
     }
-    shap <- fastshap::explain(rf, X = current_X, nsim = nsim, pred_wrapper = predict)
+    if (CLASSIFICATION == FALSE){
+      shap <- fastshap::explain(rf, X = current_X, nsim = nsim, 
+                                          pred_wrapper = predict, shap_only = FALSE)
+    }
+    print(shap)
     var_importance <- colMeans(abs(shap))
     var_importance <- sort(var_importance, decreasing = TRUE)
     var_importance <- data.frame(Feature = var_importance)
