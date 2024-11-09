@@ -70,3 +70,4 @@ predict.shap_fuzzy_forest <- function(object, new_data, ...) {
   out <- predict(object$final_rf, new_data)
   return(out)
 }
+
