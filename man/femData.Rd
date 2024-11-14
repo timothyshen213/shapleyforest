@@ -5,12 +5,18 @@
 \alias{femData}
 \title{Female Mice Liver Expression Data}
 \format{
-TODO
+A data frame with 66 rows and 3600 columns
 }
 \usage{
-femData
+data(femData)
 }
 \description{
-Female Mice Liver Expression Data
+This dataset includes gene expression levels from liver tissue
+of female mice. The data originates from research conducted by
+Ghazalpour et al (\url{https://doi.org/10.1186/1471-2105-9-559}).
+It is also widely used as an WGCNA tutorial. However, at this moment,
+the documentations for WGCNA no longer exist. See the original
+WGCNA paper for more information
+(\url{https://doi.org/10.1186/1471-2105-9-559}).
 }
 \keyword{datasets}

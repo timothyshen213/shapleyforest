@@ -251,7 +251,7 @@ colors <- data.frame(table(netColors))
 datatable(colors)
 ```
 
-Lastly, we clean the data by removing missing values in the responve value and impute these values in the predictor data via random forest.
+Lastly, we clean the data by removing missing values in the response value and impute these values in the predictor data via random forest.
 
 ```{r final clean}
 y <- datTraits$weight_g
@@ -276,7 +276,7 @@ First we prepare the data set for **`SHAPley Forest`** . Note `expression_levels
 
 ```{r shap prep}
 # to skip data preprocessing:
-# Liver_Exp <- data(Liver_Exp)
+# Liver_Exp <- data(liverExp)
 
 Liver_Exp <- final_Liver_Exp
 weight <- Liver_Exp[, 1]

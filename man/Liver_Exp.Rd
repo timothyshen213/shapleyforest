@@ -3,14 +3,17 @@
 \docType{data}
 \name{Liver_Exp}
 \alias{Liver_Exp}
-\title{Cleaned Liver Expression Data}
+\title{Cleaned and Preprocess Female Mice Liver Expression Data}
 \format{
-TODO
+A data frame with 66 rows and 3601 columns
 }
 \usage{
-Liver_Exp
+data(liverExp)
 }
 \description{
-Cleaned Liver Expression Data
+Removes outlier genes through WGCNA preprocessing of the Female
+Liver Expression Data. Weight (g) variable from Clinical Trait
+Data is also included. See Female Mice Liver Expression Vignette
+for more information.
 }
 \keyword{datasets}

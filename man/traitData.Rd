@@ -3,14 +3,17 @@
 \docType{data}
 \name{traitData}
 \alias{traitData}
-\title{Female Mice Trait Data}
+\title{Female Mice Clinical Trait Data}
 \format{
-TODO
+A data frame with 38 rows and 361 columns
 }
 \usage{
-traitData
+data(traitData)
 }
 \description{
-Female Mice Trait Data
+This dataset goes a long with the Female Mice Liver Expression
+Data. It contains clinical trait measurements of female mice.
+It shares the same observations as Female Mice Liver Expression
+Data and provides possible response variables for liver expression.
 }
 \keyword{datasets}
