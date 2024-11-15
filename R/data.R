@@ -39,6 +39,6 @@ NULL
 #' @docType data
 #' @keywords datasets
 #' @name Liver_Exp
-#' @usage data(liverExp)
+#' @usage data(Liver_Exp)
 #' @format A data frame with 66 rows and 3601 columns
 NULL

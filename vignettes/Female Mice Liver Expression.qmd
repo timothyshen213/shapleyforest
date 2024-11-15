@@ -76,7 +76,7 @@ library(flashClust) # needed for WGCNA preprocessing
 The data contains **3600 predictors** and **142 observations**.
 
 ```{r load femdata}
-femData <- data("femData")
+data("femData")
 
 # if via raw data
 # femData <- read.csv("LiverFemale3600.csv", stringsAsFactors = FALSE)
@@ -153,7 +153,7 @@ nSamples <- nrow(datExp)
 Now we load the clinical traits data of the liver females mices. It contains **361 predictors** and **38 observations.**
 
 ```{r load traits}
-traitData <- data(traitData)
+data("traitData")
 
 # if via raw data
 # traitData <- read.csv("ClinicalTraits.csv")
@@ -276,7 +276,7 @@ First we prepare the data set for **`SHAPley Forest`** . Note `expression_levels
 
 ```{r shap prep}
 # to skip data preprocessing:
-# Liver_Exp <- data(liverExp)
+# data("Liver_Exp")
 
 Liver_Exp <- final_Liver_Exp
 weight <- Liver_Exp[, 1]
