@@ -69,6 +69,7 @@
 
 
 shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_membership,
+                   min_features = 20,
                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
                    select_params = fuzzyforest:::select_control(min_ntree=5000),
                    final_ntree = 5000,
@@ -149,7 +150,13 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     ntree <- max(num_features*ntree_factor, min_ntree)
     #TUNING PARAMETER keep_fraction
     target = ceiling(num_features * keep_fraction)
-    
+    if (num_features <= min_features){
+      warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
+                      module_list[i], min_features))
+      keep = TRUE
+    } else{
+      keep = FALSE
+    }
     while (num_features >= target){
       if(num_processors > 1) {
         rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
@@ -199,6 +206,15 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
                                                decreasing=TRUE), ,drop=FALSE]
       }
       reduction <- ceiling(num_features*drop_fraction)
+      
+      # features not removed due to low count
+      if(keep == TRUE){
+        trimmed_varlist <- var_importance[var_importance > 0, , drop = FALSE]
+        features <- row.names(trimmed_varlist)
+        module <- module[, which(names(module) %in% features)]
+        target = num_features - reduction
+        num_features <- length(features)
+      }
       
       if(num_features - reduction > target) {
         trimmed_varlist <- var_importance[1:(num_features - reduction), ,drop=FALSE]
@@ -531,9 +547,23 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
   screen_mtry_factor <- screen_control$mtry_factor
   screen_ntree_factor <- screen_control$ntree_factor
   screen_min_ntree <- screen_control$min_ntree
+  min_features <- WGCNA_control$min_features
+  
+  feature_counts <- table(dynamicColors)
+  low_frequency_modules <- feature_counts[feature_counts <= min_features]
+  
+  if (length(low_frequency_modules) > 0) {
+    warning(sprintf("WGCNA - Some modules contain fewer than % s features.", min_features))
+    response <- readline(prompt = "Do you wish to continue? (yes/no): ")
+  }
+  if (tolower(response) != "yes") {
+    stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
+                     paste(capture.output(print(low_frequency_modules)), 
+                           collapse = "\n")), "\n"))
+  }
   cat("Screening Step ... \n")
   out <- shapff(X, y, Z, shap_model, shap_type, module_membership,
-                screen_control, select_control, final_ntree,
+                min_features, screen_control, select_control, final_ntree,
                 num_processors, nodesize=nodesize,
                 test_features=test_features, test_y=test_y)
   out$WGCNA_object <- bwise
