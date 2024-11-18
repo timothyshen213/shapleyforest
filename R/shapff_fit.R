@@ -150,14 +150,16 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     ntree <- max(num_features*ntree_factor, min_ntree)
     #TUNING PARAMETER keep_fraction
     target = ceiling(num_features * keep_fraction)
-    if (num_features <= min_features){
-      warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
-                      module_list[i], min_features))
-      keep = TRUE
-    } else{
-      keep = FALSE
-    }
+
     while (num_features >= target){
+      if (num_features <= min_features){
+        warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
+                        module_list[i], min_features))
+        keep = TRUE
+      } else{
+        keep = FALSE
+      }
+      
       if(num_processors > 1) {
         rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
                                , .combine = randomforest::combine, .packages = 'randomForest'),
@@ -465,35 +467,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
 #' Co-Expression Network Analysis", Statistical Applications in Genetics and
 #' Molecular Biology: Vol. 4: No. 1, Article 17
 #' @examples
-#' library(WGCNA)
-#' library(randomForest)
-#' library(fuzzyforest)
-#' data(ctg)
-#' y <- ctg$NSP
-#' X <- ctg[, 2:22]
-#' WGCNA_params <- WGCNA_control(p = 6, minModuleSize = 1, nThreads = 1)
-#' mtry_factor <- 1; min_ntree <- 500;  drop_fraction <- .5; ntree_factor <- 1
-#' screen_params <- screen_control(drop_fraction = drop_fraction,
-#'                                 keep_fraction = .25, min_ntree = min_ntree,
-#'                                 ntree_factor = ntree_factor,
-#'                                 mtry_factor = mtry_factor)
-#' select_params <- select_control(drop_fraction = drop_fraction,
-#'                                 number_selected = 5,
-#'                                 min_ntree = min_ntree,
-#'                                 ntree_factor = ntree_factor,
-#'                                 mtry_factor = mtry_factor)
-#' \donttest{
-#' wff_fit <- wff(X, y, WGCNA_params = WGCNA_params,
-#'                 screen_params = screen_params,
-#'                 select_params = select_params,
-#'                 final_ntree = 500)
-#'
-#' #extract variable importance rankings
-#' vims <- wff_fit$feature_list
-#'
-#' #plot results
-#' modplot(wff_fit)
-#' }
+#' TODO
 #' 
 
 shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_params=WGCNA_control(p=6),
@@ -555,12 +529,13 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
   if (length(low_frequency_modules) > 0) {
     warning(sprintf("WGCNA - Some modules contain fewer than % s features.", min_features))
     response <- readline(prompt = "Do you wish to continue? (yes/no): ")
+    if (tolower(response) != "yes") {
+      stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
+                       paste(capture.output(print(low_frequency_modules)), 
+                             collapse = "\n")), "\n"))
+    }
   }
-  if (tolower(response) != "yes") {
-    stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
-                     paste(capture.output(print(low_frequency_modules)), 
-                           collapse = "\n")), "\n"))
-  }
+  
   cat("Screening Step ... \n")
   out <- shapff(X, y, Z, shap_model, shap_type, module_membership,
                 min_features, screen_control, select_control, final_ntree,

@@ -11,6 +11,7 @@ shapff(
   shap_model = 1,
   shap_type = "shapley",
   module_membership,
+  min_features = 20,
   screen_params = fuzzyforest:::screen_control(min_ntree = 5000),
   select_params = fuzzyforest:::select_control(min_ntree = 5000),
   final_ntree = 5000,

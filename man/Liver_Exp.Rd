@@ -8,7 +8,7 @@
 A data frame with 66 rows and 3601 columns
 }
 \usage{
-data(liverExp)
+data(Liver_Exp)
 }
 \description{
 Removes outlier genes through WGCNA preprocessing of the Female
