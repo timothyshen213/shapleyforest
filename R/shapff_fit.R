@@ -472,7 +472,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
 #' 
 
 shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_params=WGCNA_control(p=6),
-                    min_features=min_features,
+                    min_features=20,
                     screen_params=fuzzyforest:::screen_control(min_ntree=5000),
                     select_params=fuzzyforest:::select_control(min_ntree=5000),
                     final_ntree=500, num_processors, parallel=1, nodesize,
