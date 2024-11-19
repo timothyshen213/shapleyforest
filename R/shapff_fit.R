@@ -471,6 +471,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
 #' 
 
 shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_params=WGCNA_control(p=6),
+                    min_features=min_features,
                     screen_params=fuzzyforest:::screen_control(min_ntree=5000),
                     select_params=fuzzyforest:::select_control(min_ntree=5000),
                     final_ntree=500, num_processors, parallel=1, nodesize,
@@ -521,7 +522,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
   screen_mtry_factor <- screen_control$mtry_factor
   screen_ntree_factor <- screen_control$ntree_factor
   screen_min_ntree <- screen_control$min_ntree
-  min_features <- WGCNA_control$min_features
+  min_features <- min_features
   
   feature_counts <- table(dynamicColors)
   low_frequency_modules <- feature_counts[feature_counts <= min_features]
