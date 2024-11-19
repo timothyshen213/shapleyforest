@@ -152,6 +152,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     target = ceiling(num_features * keep_fraction)
 
     while (num_features >= target){
+      print(min_features)
       if (num_features <= min_features){
         warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
                         module_list[i], min_features))
