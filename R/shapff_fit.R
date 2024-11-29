@@ -69,7 +69,7 @@
 
 
 shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_membership,
-                   min_features = 20,
+                   min_features = 20, verbose = 1, debug = 2,
                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
                    select_params = fuzzyforest:::select_control(min_ntree=5000),
                    final_ntree = 5000,
@@ -100,6 +100,9 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     }
   }
   
+  if (verbose == 0){
+    options("warn" = -1)
+  }
   
   screen_control <- screen_params
   select_control <-  select_params
@@ -128,11 +131,18 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
   }
   
   total_iterations <- length(module_list)
-  progress_bar <- txtProgressBar(min = 0, max = total_iterations, style = 3)
+  if (verbose !=0){
+    progress_bar <- txtProgressBar(min = 0, max = total_iterations, style = 3)
+  }
   
+  initial_screen <- data.frame("Module Color" = character(0), "Feature Name" = character(0),
+                    "VIM" = numeric(0), "Survivor" = logical(0))
   for (i in 1:length(module_list)) {
-    setTxtProgressBar(progress_bar, i)
-    module <- X[, which(module_membership == module_list[i]), drop=FALSE]
+    if (verbose != 0){
+      setTxtProgressBar(progress_bar, i)
+    }
+    module_name <- module_list[i]
+    module <- X[, which(module_membership == module_name), drop=FALSE]
     num_features <- ncol(module)
     if(CLASSIFICATION == TRUE) {
       mtry <- min(ceiling(mtry_factor*num_features/3), num_features)
@@ -150,24 +160,24 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
     ntree <- max(num_features*ntree_factor, min_ntree)
     #TUNING PARAMETER keep_fraction
     target = ceiling(num_features * keep_fraction)
-
+    
+    is_initial = TRUE
     while (num_features >= target){
-      print(min_features)
-      if (num_features <= min_features){
-        warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
-                        module_list[i], min_features))
-        keep = TRUE
-      } else{
-        keep = FALSE
+      if (debug != -1){
+        if (num_features <= min_features){
+          warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
+                          module_list[i], min_features))
+          keep = TRUE
+        } else{
+          keep = FALSE
+        }
       }
-      
       if(num_processors > 1) {
         rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
-                               , .combine = randomforest::combine, .packages = 'randomForest'),
+                               , .combine = randomForest::combine, .packages = 'randomForest'),
                        #second argument to '%dopar%'
                        randomForest(module , y, ntree = ntree, mtry = mtry,
                                     importance = TRUE, scale = FALSE, nodesize=nodesize))
-        
       }
       if(num_processors == 1) {
         rf <- randomForest(module, y, ntree = ntree, mtry = mtry,
@@ -191,6 +201,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
               return(prob)
             }
           } else {
+              options(warn = 1)
               stop("Invalid or single-class data in y")
           }
           shap <- suppressMessages(fastshap::explain(rf, X = module, nsim = nsim, pred_wrapper = prediction))
@@ -211,12 +222,14 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
       reduction <- ceiling(num_features*drop_fraction)
       
       # features not removed due to low count
-      if(keep == TRUE){
-        trimmed_varlist <- var_importance[var_importance > 0, , drop = FALSE]
-        features <- row.names(trimmed_varlist)
-        module <- module[, which(names(module) %in% features)]
-        target = num_features - reduction
-        num_features <- length(features)
+      if (debug != -1){
+        if(keep == TRUE){
+          trimmed_varlist <- var_importance[var_importance > 0, , drop = FALSE]
+          features <- row.names(trimmed_varlist)
+          module <- module[, which(names(module) %in% features)]
+          target = num_features - reduction
+          num_features <- length(features)
+        }
       }
       
       if(num_features - reduction > target) {
@@ -242,10 +255,59 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
         survivors[[i]][, 1] <- as.character(survivors[[i]][, 1])
         survivors[[i]][, 2] <- as.numeric(as.character(survivors[[i]][, 2]))
       }
+      
+      # records initial screening output for each module
+      if (is_initial == TRUE){
+        n <- nrow(var_importance)
+        mod_name <- rep(module_name, times = n)
+        feature_name <- rownames(var_importance)
+        trimmed_features <- rownames(trimmed_varlist)
+        survived <- feature_name %in% trimmed_features
+        temp <- data.frame("Module Color" = mod_name,"Feature Name" = feature_name, "VIM" = var_importance[,1], 
+                           "Survivor" = survived)
+        initial_screen <- rbind(initial_screen, temp)
+        is_initial = FALSE
+      }
+    }
+
+  }
+  
+  
+  ## Initial Screening Output Procedure ##
+  if (debug == 2){
+    cat("\nDisplaying Initial Screen (First Step) Variable Importance ... ")
+    print(knitr::kable(initial_screen))
+    
+    # User given an option to save initial screening
+    save_prompt <- readline(prompt = "Choose an option on output (1, 2, 3, or 4): 
+    1. Save and Stop 
+    2. Save and Continue 
+    3. Don't Save and Stop
+    4. Don't Save and Continue")  
+    
+    # if encounters invalid response to prompt, asks again
+    while (!save_prompt %in% c("1", "2", "3", "4")) {
+      save_prompt <- readline(prompt = "Invalid choice. Please enter 1, 2, 3 or 4: ")
+    }
+    
+    # follows the user defined save procedure
+    if (tolower(save_prompt) %in% c("1", "2")) { # save output
+      write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
+      assign("initial_screen", initial_screen, envir = .GlobalEnv)
+      cat("Dataframe saved as 'initial_screen.csv'.\n")
+      if (tolower(save_prompt) == "1"){ # stops running
+        options(warn = 1)
+        stop("Execution stopped as per user choice.\n")
+      }
+    } else { # skips all
+      if (tolower(save_prompt) == "3"){
+        options(warn = 1)
+        stop("Execution stopped as per user choice.\n")
+      }
     }
   }
   
-  cat("\nSelection Step ...")
+  if (verbose != 0){cat("\nSelection Step ...")}
   
   survivor_list <- survivors
   names(survivor_list) <- module_list
@@ -330,6 +392,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
             return(prob)
           }
         } else {
+          options(warn = 1)
           stop("Invalid or single-class data in y")
         }
         shap_final_obj <- fastshap::explain(final_rf, X = final_X, nsim = final_nsim, 
@@ -376,7 +439,7 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
                            shap_obj = shap_final_obj,
                            final_X = final_X, shap_type = shap_type)
   
-  cat("Done \n")
+  if (verbose != 0){cat("Done \n")}
   
   return(out)
 }
@@ -472,12 +535,12 @@ shapff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_m
 #' 
 
 shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_params=WGCNA_control(p=6),
-                    min_features=20,
+                    min_features=20, verbose = 1, debug = 2,
                     screen_params=fuzzyforest:::screen_control(min_ntree=5000),
                     select_params=fuzzyforest:::select_control(min_ntree=5000),
                     final_ntree=500, num_processors, parallel=1, nodesize,
                     test_features=NULL, test_y=NULL, nsim=1, final_nsim=100) {
-  #browser()
+  
   if ( !("package:WGCNA" %in% search()) ) {
     stop("WGCNA must be loaded and attached. Type library(WGCNA) to do so.",
          call. = FALSE)
@@ -485,7 +548,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
   if (!(is.vector(y) || is.factor(y))) {
     stop("y must be vector or factor")
   }
-  #WGCNA yields errors if X is an integer, here we convert integers to numeric.
+  # WGCNA yields errors if X is an integer, here we convert integers to numeric.
   integer_test <- sapply(X, is.integer)
   if( sum(integer_test) > 0 ) {
     ints <- which(integer_test == TRUE)
@@ -510,6 +573,22 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
     stop("shap must be 0 or 1. Type help(shapff) or help(shapwff) for details.")
   }
   
+  if (!verbose %in% c(0, 1)) {
+    stop("verbose must be 0 or 1")
+  }
+  
+  if (!debug %in% c(-1, 0, 1, 2)) {
+    stop("debug must be -1, 0, 1, or 2")
+  }
+  
+  if (verbose == 0 && !debug %in% c(-1, 0)){
+    stop("if debug is 1 or 2, verbose must be 0")
+  }
+  
+  if (verbose == 0){
+    options("warn" = -1)
+  }
+  
   WGCNA_control <- WGCNA_params
   screen_control <- screen_params
   select_control <-  select_params
@@ -525,24 +604,29 @@ shapwff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", WGCNA_p
   screen_min_ntree <- screen_control$min_ntree
   min_features <- min_features
   
-  feature_counts <- table(dynamicColors)
-  low_frequency_modules <- feature_counts[feature_counts <= min_features]
-  
-  if (length(low_frequency_modules) > 0) {
-    warning(sprintf("WGCNA - Some modules contain fewer than % s features.", min_features))
-    response <- readline(prompt = "Do you wish to continue? (yes/no): ")
-    if (tolower(response) != "yes") {
-      stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
-                       paste(capture.output(print(low_frequency_modules)), 
-                             collapse = "\n")), "\n"))
+  if (!debug %in% c(-1, 0)){
+    feature_counts <- table(dynamicColors)
+    low_frequency_modules <- feature_counts[feature_counts <= min_features]
+    
+    if (length(low_frequency_modules) > 0) {
+      warning(sprintf("WGCNA - Some modules contain fewer than % s features.", min_features))
+      response <- readline(prompt = "Do you wish to continue? (yes/no): ")
+      if (tolower(response) != "yes") {
+        options(warn = old_warn)
+        stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
+                         paste(capture.output(print(low_frequency_modules)), 
+                               collapse = "\n")), "\n"))
+      }
     }
   }
   
-  cat("Screening Step ... \n")
+  if (verbose != "0"){ cat("Screening Step ... \n")}
   out <- shapff(X, y, Z, shap_model, shap_type, module_membership,
-                min_features, screen_control, select_control, final_ntree,
+                min_features, verbose, debug, screen_control, select_control, final_ntree,
                 num_processors, nodesize=nodesize,
                 test_features=test_features, test_y=test_y)
   out$WGCNA_object <- bwise
+  
+  options(warn = 1)
   return(out)
 }

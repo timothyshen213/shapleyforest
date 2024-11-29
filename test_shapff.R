@@ -20,7 +20,7 @@ library(fuzzyforest)
 library(mvtnorm)
 library(treeshap)
 library(shapff)
-
+options(warn = 1)
 shap_ff <- function(X, y, Z=NULL, shap_model = 1, shap_type = "shapley", module_membership,
                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
                    select_params = fuzzyforest:::select_control(min_ntree=5000),
@@ -384,208 +384,23 @@ if (p == 1000) {
   beta_list <- rep(c(5, 5, 2), 2)
 }
 
-runtime <- system.time({
-    all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
-    all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
-    X <- do.call(cbind, all_modules)
-    beta <- rep(0, p_per_group * (number_of_mods + 1))
-    beta[vim_list] <- beta_list
-    y <- X %*% beta + rnorm(n, sd = 0.1)
-    X <- as.data.frame(X)
-    names(X) <- paste("V", 1:p, sep = "")
-    mtry_factor <- 1
-    screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
+
+all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+X <- do.call(cbind, all_modules)
+beta <- rep(0, p_per_group * (number_of_mods + 1))
+beta[vim_list] <- beta_list
+y <- X %*% beta + rnorm(n, sd = 0.1)
+X <- as.data.frame(X)
+names(X) <- paste("V", 1:p, sep = "")
+mtry_factor <- 1
+screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
                                     mtry_factor = mtry_factor)
-    select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
+select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
                                     mtry_factor = mtry_factor)
-    y <- as.numeric(y)
-    ff <- shapwff(X, y, shap_model = 1, shap_type = "shapley", screen_params = screen_params, select_params = select_params, 
-                   num_processors = 1, nodesize = 1)
-})
-
-base_value <- mean(predict(ff$final_rf, ff$final_X))
-prediction_out <- predict(ff$final_rf, ff$final_X)
-shap_values <- ff$shap_obj$shapley_values
-feature_values <- ff$final_X
-instance_id <- 1
-decision_plot <- function()
-###################
-# Step 1: Data Preparation
-feature_names <- colnames(shap_values)
-
-shap_df <- as.data.frame(shap_values)
-colnames(shap_df) <- feature_names
-
-shap_df$Observation <- 1:nrow(shap_df)
-shap_long <- melt(shap_df, id.vars = "Observation", variable.name = "Feature", value.name = "SHAP")
-
-# Step 2: Feature Ordering
-feature_importance <- colMeans(abs(shap_values))  # Sort based on absolute SHAP values
-feature_names <- names(sort(feature_importance, decreasing = FALSE))
-
-# Reorder 'Feature' factor levels (this ensures all features are ordered consistently)
-shap_long$Feature <- factor(shap_long$Feature, levels = feature_names)
-
-# Step 3: Cumulative SHAP Values
-shap_long <- shap_long %>%
-  group_by(Observation) %>%
-  arrange(Feature) %>%  # Enforce consistent feature order before calculating cumulative SHAP
-  mutate(Cumulative_SHAP = cumsum(SHAP))  # Compute cumulative SHAP for each observation
-
-start <- data.frame(
-  Observation = 1:nrow(shap_df),
-  Feature = "",  # Dummy feature name for the top row
-  SHAP = 0,  # SHAP value is 0 for this dummy row
-  Cumulative_SHAP = 0  # Cumulative SHAP is the prediction value
-)
-
-# Bind the prediction_df to shap_long
-shap_long <- bind_rows(start, shap_long)
-
-# Update factor levels to include the "Prediction Output" as the last feature
-shap_long$Feature <- factor(shap_long$Feature, levels = c("", feature_names))
-
-# Step 4: Assign color based on the last Cumulative SHAP value for each observation
-last_shap_values <- shap_long %>%
-  group_by(Observation) %>%
-  summarize(Last_Cumulative_SHAP = last(Cumulative_SHAP))
-
-# Merge back with the main data
-shap_long <- shap_long %>%
-  left_join(last_shap_values, by = "Observation")
-
-# Step 4: Keep Only Highlighted Observations
-highlight_obs <- c(1, 2)  # Specify which observations to keep
-shap_long <- shap_long %>% filter(Observation %in% highlight_obs)  # Subset to only highlighted observations
-
-# Step 5: Plot Cumulative SHAP Values for Highlighted Observations
-ggplot(shap_long, aes(x = Cumulative_SHAP, y = Feature, group = Observation)) +
-  geom_path(aes(color = Last_Cumulative_SHAP), size = 1) +  # Use geom_path for smoother connections
-  geom_point(size = 2) +  # Add points for emphasis
-  geom_vline(xintercept = base_value, color = "#999999", linetype = "dashed") +  # Vertical base value line
-  scale_color_gradient(low = "blue", high = "red") +  # Gradient for the entire line
-  theme_minimal() +
-  labs(title = "Decision Plot",
-       x = "Cumulative SHAP Value",
-       y = "Feature",
-       color = "Predicted Output") +
-  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 10))
-
-
-
-# via fastshap
-
-#detect_interaction(ff, 0.1)
-plot_importance(ff)
-plot_dependence(ff, features=c("V11"))
-plot_waterfall(ff, row_id=1)
-plot_force(ff, row_id=1)
-plot_potential_interactions(ff)
-plot_decisions(ff)
-plot_decisions(ff, highlight = c(1, 2, 90, 91, 92))
-
-id <- 150
-set.seed(id)
-
-## NON LINEAR TEST ##
-gen_mod <- function(n, p, corr) {
-  sigma <- matrix(corr, nrow = p, ncol = p)
-  diag(sigma) <- 1
-  X <- rmvnorm(n, sigma = sigma)
-  return(X)
-}
-
-rep_num <- 100
-keep_frac <- c(0.1, 0.15, 0.25)
-drop_frac <- c(0.05, 0.25, 0.5)
-mtry_factor <- c(1, 2)
-p <- c(100, 1000)
-n <- c(250, 500)
-
-param_list <- list(n, keep_frac, drop_frac, mtry_factor, p)
-param_settings <- expand.grid(param_list)
-param_settings <- param_settings[, 5:1]
-names(param_settings) <- c("p", "mtry_factor", "drop_fraction", "keep_fraction", "n")
-
-param_settings
-current_sim_params <- param_settings[ceiling((id)/rep_num), ]
-
-p <- as.numeric(current_sim_params[1])
-mtry_factor <- as.numeric(current_sim_params[2])
-drop_fraction <- as.numeric(current_sim_params[3])
-keep_fraction <- as.numeric(current_sim_params[4])
-n <- as.numeric(current_sim_params[5])
-
-setwd("C:/Users/timot/OneDrive/Documents/1 - UCLA/Research/fuzzyforest/SimulationStudy")
-beta_int <- cbind(seq(3.7, 3.8, length.out = 20), seq(2.9, 3.1, length.out = 20))
-load("VimSimulations/int_vims.RData")
-beta_int_f <- c(beta_int[, 1][which.min(abs(30 - int_vims[, 1]))], beta_int[, 2][which.min(abs(30 - 
-                                                                                                 int_vims[, 2]))])
-cube_coef <- seq(0.995, 1.05, length.out = 20)
-load("VimSimulations/cube_vims.RData")
-cube_coef_f <- cube_coef[which.min(abs(30 - cube_vims))]
-beta <- c(1, beta_int_f, sqrt(15), cube_coef_f)
-beta_list <- list(beta1 = beta[-2], beta2 = beta[-3])
-f_calc <- function(x, beta_list, var_block_ind) {
-  lp <- 0
-  for (i in 1:length(beta_list)) {
-    cbeta <- beta_list[[i]]
-    cx <- x[var_block_ind[i]:(var_block_ind[i] + length(cbeta) - 1)]
-    lp <- lp + cx[1] * cbeta[1] + cx[2] * cbeta[1] + cx[1] * cx[2] * cbeta[2] + 
-      cx[3] * beta[3] + cx[4]^3 * cbeta[4]
-  }
-  lp
-}
-gen_reg <- function(n, beta_list, var_block_ind, mod_sizes, corr, sd_err) {
-  m <- length(mod_sizes)
-  X_list <- vector("list", length = m)
-  for (i in 1:m) {
-    X_list[[i]] <- gen_mod(n, mod_sizes[i], corr[i])
-  }
-  X <- do.call("cbind", X_list)
-  f <- apply(X, 1, f_calc, beta_list = beta_list, var_block_ind = var_block_ind)
-  y <- f + rnorm(n, sd_err)
-  dat <- cbind(y, X)
-  return(dat)
-}
-if (p==100){
-  var_block_ind <- c(1, 76)  
-  mod_sizes <- rep(25, 4)
-  vim_interest <- c(1:100)
-}
-if (p==1000){
-  var_block_ind <- c(1, 901)  
-  mod_sizes <- rep(250, 4)
-  vim_interest <- c(1:1000)
-}
-corr <- rep(0.8, 4)
-corr[4] <- 0
-sim_num <- 5
-runtime <- system.time({
-  for (k in 1:1) {
-    sd_err <- 0.5
-    dat <- gen_reg(n, beta_list, var_block_ind, mod_sizes, corr, sd_err)
-    dat <- as.data.frame(dat)
-    if (p==100){
-      names(dat) <- c("y", paste("V", 1:100, sep = ""))
-      X <- dat[, 2:101]
-      y <- dat[, 1]
-    }
-    if (p==1000){
-      names(dat) <- c("y", paste("V", 1:1000, sep = ""))
-      X <- dat[, 2:1001]
-      y <- dat[, 1]
-    }
-    
-    screen_params <- screen_control(keep_fraction = keep_fraction, ntree_factor = 1, mtry_factor = mtry_factor, 
-                                    min_ntree = 500)
-    select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, ntree_factor = 1, 
-                                    mtry_factor = mtry_factor, min_ntree = 500)
-    
-    ff <- shapwff(X, y, shap_model = 1, shap_type = "tree", select_params = select_params, screen_params = screen_params,
-                  num_processors=1)
-  }
-})
+y <- as.numeric(y)
+ff <- shapwff(X, y, shap_model = 1, shap_type = "shapley", screen_params = screen_params, select_params = select_params, 
+                   num_processors = 1, nodesize = 1, min_features = 30, verbose = 1, debug = 2)
 
 # via treeshap
 plot_importance(ff)
