@@ -1,3 +1,8 @@
+#' Shapley Forest loading Message
+.onAttach <- function(libname, pkgname) {
+  packageStartupMessage("Hi! shapley forest. Beta Version--UNDER DEVELOPMENT")
+}
+
 #' SHAP Fuzzy Forest Object
 #'
 #' Fuzzy forests with SHAPley values returns an object of type.

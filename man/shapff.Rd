@@ -2,16 +2,18 @@
 % Please edit documentation in R/shapff_fit.R
 \name{shapff}
 \alias{shapff}
-\title{Fits fuzzy forest algorithm with SHAP values.}
+\title{Runs shapley forest algorithm}
 \usage{
 shapff(
   X,
   y,
   Z = NULL,
-  shap_model = 1,
-  shap_type = "shapley",
+  shap_model = "full",
   module_membership,
   min_features = 20,
+  verbose = 1,
+  debug = 2,
+  initial = TRUE,
   screen_params = fuzzyforest:::screen_control(min_ntree = 5000),
   select_params = fuzzyforest:::select_control(min_ntree = 5000),
   final_ntree = 5000,
@@ -29,25 +31,45 @@ shapff(
 feature vector.}
 
 \item{y}{Response vector. If performing classification, \code{y} should
-be a factor or a character. If performing regression, \code{y}
-should be numeric.}
+be a factor. If performing regression, \code{y}
+should be numeric vector.}
 
 \item{Z}{A data.frame of additional features that will bypass
 the screening step.}
 
-\item{shap_model}{Binary indicator for \code{shapff} model. If \code{1}, \code{shapff}
+\item{shap_model}{Binary indicator for \code{shapff} model. If \code{full}, \code{shapff}
 runs SHAPley values at both screening and selection step.
-If \code{0}, \code{shapff} model runs SHAPley values at the end
+If \code{after}, \code{shapff} model runs SHAPley values at the end
 of final model and keeps permutation VIMs usage at other steps.
 \code{1} is default.}
 
-\item{shap_type}{Final SHAP calculation method. If \code{shapley}, \link[fastshap]{fastshap}
-will be ran. If \code{tree}, \link[treeshap]{treeshap} will be ran.
-Running treeshap will have longer runtime, but allows for interaction values
-and plots to be used.}
-
 \item{module_membership}{A vector that specifies the module membership for each
-each feature.}
+each feature. See \code{shapwff} for possible method.}
+
+\item{min_features}{Defines minimum feature allowed for each module. If \code{debug} is
+not \code{-1}, modules below \code{min_features} will only keep non-zero
+important features during each Recursive Feature Elimination
+iteration}
+
+\item{verbose}{Defines the warning message protocol. If \code{0}, no warning or UI
+will be displayed. If \code{1}, warnings and UI progress bar will
+be displayed.}
+
+\item{debug}{Sets the debugging procedures. If \code{-1}, all debugging functions
+will be bypassed. If \code{0}, debugging at the WGCNA will be bypassed.
+Note for \code{shapff}, \code{0} has no effect. If \code{1}, debugging during
+Recursive Feature Elimination at both screening and selection step
+will be bypassed. If \code{2}, all debugging functions will be ran. Below
+are the debugging features. Debugging at WGCNA detects if each module
+is below the \code{min_features}. Debugging at RFE will keep only
+non zero important feature at each elimination step for modules below
+\code{min_features}.}
+
+\item{initial}{Binary indicator to print out initial screening step results (ie the
+results from the first Recursive Feature Elimination at the screening
+step for each module). If \code{True}, \code{shapff} will pause after RFE
+allowing users to select output method for initial screening. If \code{False},
+it will bypass all initial screening procedure.}
 
 \item{screen_params}{Defines the parameter settings for the screening step
 of \link[fuzzyforest]{fuzzyforest}.
@@ -65,7 +87,7 @@ See \code{\link[fuzzyforest]{select_control}} for details.
 the selection step. This random forest contains all
 the surviving features.}
 
-\item{num_processors}{Number of processors used to fit random forests.}
+\item{num_processors}{Number of processors used to run random forests.}
 
 \item{parallel}{Type of parellization to be used. \code{1} if
 \code{\link[doParallel]{doParallel}}. \code{2} if
@@ -81,9 +103,11 @@ it may be useful to increase \code{nodesize}.}
 
 \item{test_features}{A data.frame containing features from a test set.
 The data.frame should contain the features in both
-X and Z.}
+X and Z. Used during final Random Forest call (after
+screening and selection step).}
 
-\item{test_y}{The responses for the test set.}
+\item{test_y}{The responses for the test set. Used during final Random
+Forest call (after screening and selection step).}
 
 \item{nsim}{Number of Monte Carlo repetitions for estimating SHAP
 values in the screening step. Default is \code{1}. Increasing
@@ -95,10 +119,11 @@ values in the selection step. Default is \code{1}. \codt{final_nsim}
 should be as large as feasibly possible.}
 }
 \value{
-Returns an object of type fuzzy_forest, which is a list containing the essential
-output of fuzzy forests, including a data.frame of selected features and the random forest
+Returns an object of type \code{shapley_forest}, which is a list containing the essential
+output of shapley forests, including a data.frame of selected features and the random forest
 model fitted using those features.
 }
 \description{
-Fits fuzzy forest algorithm with SHAP values for feature importance.
+Runs shapley forest algorithm for feature importance through
+the use of SHAPley values.
 }

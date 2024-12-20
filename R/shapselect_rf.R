@@ -34,9 +34,6 @@
 #' @import randomForest
 #' @import fastshap
 #' 
-#' @importFrom randomForest margin
-#' @importFrom fastshap explain
-#' @importFrom randomForest combine
 #' @return A data.frame with the top ranked features.
 
 shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, mtry_factor,
