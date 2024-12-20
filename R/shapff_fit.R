@@ -74,7 +74,7 @@
 #'                          \code{nsim} leads to more accurate results, but at the cost
 #'                          of computational cost.
 #' @param final_nsim        Number of Monte Carlo repetitions for estimating SHAP
-#'                          values in the selection step. Default is `1`. \codt{final_nsim}
+#'                          values in the selection step. Default is `1`. \code{final_nsim}
 #'                          should be as large as feasibly possible.
 #' @return Returns an object of type `shapley_forest`, which is a list containing the essential 
 #' output of shapley forests, including a data.frame of selected features and the random forest 
@@ -620,7 +620,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 #'                          \code{nsim} leads to more accurate results, but at the cost
 #'                          of computational cost.
 #' @param final_nsim        Number of Monte Carlo repetitions for estimating SHAP
-#'                          values in the selection step. Default is `1`. \codt{final_nsim}
+#'                          values in the selection step. Default is `1`. \code{final_nsim}
 #'                          should be as large as feasibly possible.
 #' @return Returns an object of type fuzzy_forest, which is a list containing the essential 
 #' output of fuzzy forests, including a data.frame of selected features and the random forest 

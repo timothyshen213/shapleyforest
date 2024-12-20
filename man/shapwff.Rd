@@ -118,7 +118,7 @@ values in the screening step. Default is \code{1}. Increasing
 of computational cost.}
 
 \item{final_nsim}{Number of Monte Carlo repetitions for estimating SHAP
-values in the selection step. Default is \code{1}. \codt{final_nsim}
+values in the selection step. Default is \code{1}. \code{final_nsim}
 should be as large as feasibly possible.}
 
 \item{module_membership}{A vector that specifies the module membership for each
