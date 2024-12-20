@@ -39,6 +39,11 @@
 #'                          step for each module). If `True`, \code{shapff} will pause after RFE
 #'                          allowing users to select output method for initial screening. If `False`,
 #'                          it will bypass all initial screening procedure.
+#' @param auto_initial      Bypass readline prompt for \code{initial}. If `1`, `initial_screening.csv`
+#'                          will be saved in directory and stops. If `2`, `initial_screening.csv`
+#'                          will be saved in directory and proceeds. If `3`, nothing saved and stops.
+#'                          If `4`, nothing saved and proceeds. Default is `NULL`. Note if \code{initial},
+#'                          is set to `TRUE`, `auto_initial` will automically be set to `NULL`.
 #' @param screen_params     Defines the parameter settings for the screening step
 #'                          of \link[fuzzyforest]{fuzzyforest}.
 #'                          See \code{\link[fuzzyforest]{screen_control}} for
@@ -88,7 +93,8 @@
 
 
 shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
-                   min_features = 20, verbose = 1, debug = 2, initial = TRUE,
+                   min_features = 20, verbose = 1, debug = 2, 
+                   initial = TRUE, auto_initial = NULL, 
                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
                    select_params = fuzzyforest:::select_control(min_ntree=5000),
                    final_ntree = 5000,
@@ -376,6 +382,23 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     }
   }
   
+  if (auto_initial != NULL){
+    if (auto_initial %in% c("1", "2")) { # save output
+      write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
+      assign("initial_screen", initial_screen, envir = .GlobalEnv)
+      cat("Dataframe saved as 'initial_screen.csv'.\n")
+      if (auto_initial == "1"){ # stops running
+        options(warn = 1)
+        stop("Execution stopped as per user choice.\n")
+      }
+    } else { # skips all
+      if (auto_initial == "3"){
+        options(warn = 1)
+        stop("Execution stopped as per user choice.\n")
+      }
+    }
+  }
+  
   # verbose UI
   if (verbose != 0){cat("\nSelection Step ...")}
   
@@ -585,6 +608,11 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 #'                          step for each module). If `True`, \code{shapff} will pause after RFE
 #'                          allowing users to select output method for initial screening. If `False`,
 #'                          it will bypass all initial screening procedure.
+#' @param auto_initial      Bypass readline prompt for \code{initial}. If `1`, `initial_screening.csv`
+#'                          will be saved in directory and stops. If `2`, `initial_screening.csv`
+#'                          will be saved in directory and proceeds. If `3`, nothing saved and stops.
+#'                          If `4`, nothing saved and proceeds. Default is `NULL`. Note if \code{initial},
+#'                          is set to `TRUE`, `auto_initial` will automically be set to `NULL`.
 #' @param screen_params     Defines the parameter settings for the screening step
 #'                          of \link[fuzzyforest]{fuzzyforest}.
 #'                          See \code{\link[fuzzyforest]{screen_control}} for
@@ -650,7 +678,8 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 
 shapwff <- function(X, y, Z=NULL, shap_model = "full",
                     WGCNA_params=WGCNA_control(p=6),
-                    min_features=20, verbose = 1, debug = 2, initial = TRUE,
+                    min_features=20, verbose = 1, debug = 2, 
+                    initial = TRUE, auto_initial = NULL,
                     screen_params=fuzzyforest:::screen_control(min_ntree=5000),
                     select_params=fuzzyforest:::select_control(min_ntree=5000),
                     final_ntree=500, num_processors, parallel=1, nodesize,
@@ -702,6 +731,14 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   
   if (!is.logical(initial) || length(initial) != 1) {
     stop("initial must be boolean.")
+  }
+  
+  if (!auto_initial %in% c(1, 2, 3, 4) || !is.null(auto_initial)){
+    stop("auto_initial must be NULL, 1, 2, 3, or 4")
+  }
+  
+  if (initial == FALSE){
+    auto_initial = NULL
   }
   
   if (verbose == 0){
