@@ -84,7 +84,7 @@
 #' @import randomForest
 #' @import fastshap
 #' 
-# @importFrom randomForest combine
+#' @importFrom randomForest combine
 
 
 shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
@@ -126,7 +126,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   # sets parameters for each step
   screen_control <- screen_params
-  select_control <-  select_params
+  select_control <- select_params
   
   # obtains module membership (ie. from WGCNA)
   module_list <- unique(module_membership)
@@ -525,14 +525,13 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   select_order <- shap_final_list[, 1][which(shap_final_list[,1] %in% names(X))]
   select_mods <- select_mods[match(select_order, select_X)]
   shap_final_list[, 3][shap_final_list[, 1] %in% names(final_X)] <- select_mods
-  
   # output function
   out <- shap_fuzzy_forest(final_rf, final_module_membership,
                            survivor_list=survivor_list,
                            selection_list=selection_list, 
                            final_shap = shap_final_list,
                            shap_obj = shap_final_obj,
-                           final_X = final_X, shap_type = shap_type)
+                           final_X = final_X)
   
   # verbose message
   if (verbose != 0){cat("Done \n")}
@@ -725,7 +724,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   min_features <- min_features
   
   if (!debug %in% c(-1, 0)){
-    feature_counts <- table(dynamicColors)
+    feature_counts <- table(module_membership)
     low_frequency_modules <- feature_counts[feature_counts <= min_features]
     
     if (length(low_frequency_modules) > 0) {
@@ -740,8 +739,9 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   }
   
   if (verbose != "0"){ cat("Screening Step ... \n")}
-  out <- shapff(X, y, Z, shap_model, shap_type, module_membership,
-                min_features, verbose, debug, screen_control, select_control, final_ntree,
+  out <- shapff(X, y, Z, shap_model, module_membership,
+                min_features, verbose, debug, initial, screen_control, 
+                select_control, final_ntree,
                 num_processors, nodesize=nodesize,
                 test_features=test_features, test_y=test_y)
   out$WGCNA_object <- bwise

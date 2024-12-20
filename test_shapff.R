@@ -399,8 +399,8 @@ screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = k
 select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
                                     mtry_factor = mtry_factor)
 y <- as.numeric(y)
-ff <- shapwff(X, y, shap_model = 1, shap_type = "shapley", screen_params = screen_params, select_params = select_params, 
-                   num_processors = 1, nodesize = 1, min_features = 30, verbose = 1, debug = 2)
+ff <- shapwff(X, y, shap_model = "full", screen_params = screen_params, select_params = select_params, 
+                   num_processors = 1, nodesize = 1, min_features = 30, verbose = 1, debug = 2, final_nsim = 1)
 
 # via treeshap
 plot_importance(ff)

@@ -12,8 +12,7 @@ shap_fuzzy_forest(
   survivor_list,
   selection_list,
   final_shap,
-  shap_obj,
-  shap_type
+  shap_obj
 )
 }
 \arguments{
