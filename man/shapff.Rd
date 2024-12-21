@@ -14,6 +14,7 @@ shapff(
   verbose = 1,
   debug = 2,
   initial = TRUE,
+  auto_initial = NULL,
   screen_params = fuzzyforest:::screen_control(min_ntree = 5000),
   select_params = fuzzyforest:::select_control(min_ntree = 5000),
   final_ntree = 5000,
@@ -70,6 +71,12 @@ results from the first Recursive Feature Elimination at the screening
 step for each module). If \code{True}, \code{shapff} will pause after RFE
 allowing users to select output method for initial screening. If \code{False},
 it will bypass all initial screening procedure.}
+
+\item{auto_initial}{Bypass readline prompt for \code{initial}. If \code{1}, \code{initial_screening.csv}
+will be saved in directory and stops. If \code{2}, \code{initial_screening.csv}
+will be saved in directory and proceeds. If \code{3}, nothing saved and stops.
+If \code{4}, nothing saved and proceeds. Default is \code{NULL}. Note if \code{initial},
+is set to \code{TRUE}, \code{auto_initial} will automically be set to \code{NULL}.}
 
 \item{screen_params}{Defines the parameter settings for the screening step
 of \link[fuzzyforest]{fuzzyforest}.
