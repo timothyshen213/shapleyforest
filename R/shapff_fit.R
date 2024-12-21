@@ -733,7 +733,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
     stop("initial must be boolean.")
   }
   
-  if (!auto_initial %in% c(1, 2, 3, 4) || !is.null(auto_initial)){
+  if (!auto_initial %in% c(NULL, 1, 2, 3, 4) || !is.null(initial)){
     stop("auto_initial must be NULL, 1, 2, 3, or 4")
   }
   
