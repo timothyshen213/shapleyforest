@@ -127,7 +127,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     }
   }
   if (verbose == 0){
-    options("warn" = -1)
+    options(warn = -1)
   }
   
   # sets parameters for each step
@@ -162,8 +162,10 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   # adjusts keep_fraction if below minimum threshold
   if(ncol(X)*keep_fraction < select_control$number_selected){
-    warning(c("ncol(X)*keep_fraction < number_selected", "\n",
-              "number_selected will be set to floor(ncol(X)*keep_fraction)"))
+    if (verbose != 0){
+      warning(c("\n ncol(X)*keep_fraction < number_selected", "\n",
+                "number_selected will be set to floor(ncol(X)*keep_fraction)"))
+    }
     select_control$number_selected <- max(floor(ncol(X)*keep_fraction), 1)
   }
   
@@ -221,8 +223,10 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
       if (debug != -1 || debug != 1){
         # if module has low features, only keep non zero important features
         if (num_features <= min_features){
-          warning(sprintf("Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
-                          module_list[i], min_features))
+          if (verbose != 0){
+            warning(sprintf("\n Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
+                            module_list[i], min_features))
+          }
           keep = TRUE
         } else{
           keep = FALSE
@@ -349,6 +353,27 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   
   ## Initial Screening Output Procedure
+  
+  if (!is.null(auto_initial)){
+    if (auto_initial %in% c("1", "2")) { # save output
+      write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
+      assign("initial_screen", initial_screen, envir = .GlobalEnv)
+      if (verbose != 0){
+        cat("Dataframe saved as 'initial_screen.csv'.\n")
+      }
+      if (auto_initial == "1"){ # stops running
+        options(warn = 1)
+        stop("Execution stopped as per user choice.\n")
+      }
+    } else { # skips all
+      if (auto_initial == "3"){
+        options(warn = 1)
+        stop("Execution stopped as per user choice.\n")
+      }
+    }
+    initial = FALSE
+  }
+  
   if (initial == TRUE){
     cat("\nDisplaying Initial Screen (First Step) Variable Importance ... ")
     print(knitr::kable(initial_screen))
@@ -381,23 +406,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
       }
     }
   }
-  
-  if (auto_initial != NULL){
-    if (auto_initial %in% c("1", "2")) { # save output
-      write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
-      assign("initial_screen", initial_screen, envir = .GlobalEnv)
-      cat("Dataframe saved as 'initial_screen.csv'.\n")
-      if (auto_initial == "1"){ # stops running
-        options(warn = 1)
-        stop("Execution stopped as per user choice.\n")
-      }
-    } else { # skips all
-      if (auto_initial == "3"){
-        options(warn = 1)
-        stop("Execution stopped as per user choice.\n")
-      }
-    }
-  }
+
   
   # verbose UI
   if (verbose != 0){cat("\nSelection Step ...")}
@@ -725,8 +734,8 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
     stop("debug must be -1, 0, 1, or 2")
   }
   
-  if (verbose == 0 && !debug %in% c(-1, 0)){
-    stop("if debug is 1 or 2, verbose must be 1")
+  if (verbose == 0 && !debug %in% c(-1, 1)){
+    stop("if debug is 0 or 2, verbose must be 1")
   }
   
   if (!is.logical(initial) || length(initial) != 1) {
@@ -742,7 +751,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   }
   
   if (verbose == 0){
-    options("warn" = -1)
+    options(warn = -1)
   }
   
   WGCNA_control <- WGCNA_params
@@ -751,7 +760,15 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   WGCNA_args <- list(X,WGCNA_control$power)
   WGCNA_args <- c(WGCNA_args, WGCNA_control$extra_args)
   names(WGCNA_args) <- c("datExpr", "power", names(WGCNA_control$extra_args))
-  bwise <- do.call("blockwiseModules", WGCNA_args)
+  if (verbose == 0){
+    invisible(capture.output({
+      suppressWarnings(suppressMessages({
+        bwise <- do.call("blockwiseModules", WGCNA_args)
+      }))
+    }))
+  } else {
+    bwise <- do.call("blockwiseModules", WGCNA_args)
+  }
   module_membership <- bwise$colors
   screen_drop_fraction <- screen_control$drop_fraction
   screen_keep_fraction <- screen_control$keep_fraction
@@ -765,7 +782,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
     low_frequency_modules <- feature_counts[feature_counts <= min_features]
     
     if (length(low_frequency_modules) > 0) {
-      warning(sprintf("WGCNA - Some modules contain fewer than % s features.", min_features))
+      warning(sprintf("\n WGCNA - Some modules contain fewer than % s features.", min_features))
       response <- readline(prompt = "Do you wish to continue? (yes/no): ")
       if (tolower(response) != "yes") {
         stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
@@ -777,7 +794,8 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   
   if (verbose != "0"){ cat("Screening Step ... \n")}
   out <- shapff(X, y, Z, shap_model, module_membership,
-                min_features, verbose, debug, initial, screen_control, 
+                min_features, verbose, debug, initial, 
+                auto_initial, screen_control, 
                 select_control, final_ntree,
                 num_processors, nodesize=nodesize,
                 test_features=test_features, test_y=test_y)

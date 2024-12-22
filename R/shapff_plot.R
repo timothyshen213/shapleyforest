@@ -518,13 +518,12 @@ plot_decisions.shap_fuzzy_forest <- function(object, highlight = NULL, plot_titl
                                              geom_point = FALSE, 
                                              gradient = c("blue", "red"), ...){
 
-  if (object$shap_type == "shapley"){
-    shap_values <- object$shap_obj$shapley_values
-  }
   
-  if (object$shap_type == "tree"){
-    shap_values <- object$shap_obj$shaps
-  }
+  shap_values <- object$shap_obj$shapley_values
+  
+  #if (object$shap_type == "tree"){
+  #  shap_values <- object$shap_obj$shaps
+  #}
   feature_names <- colnames(shap_values)
   if (!is.null(highlight)){
     if (is.numeric(highlight)){
