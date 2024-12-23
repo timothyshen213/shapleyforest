@@ -1,5 +1,5 @@
-Package: shapff
-Title: SHAPley Fuzzy Forest
+Package: shapleyforest
+Title: SHAPley Forest
 Version: 0.1.0
 Authors@R: 
     person("Timothy", "Shen", , "tzshen@g.ucla.edu", role = c("aut", "cre"))
