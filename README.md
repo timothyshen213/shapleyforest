@@ -1,4 +1,4 @@
-# `shapff`: SHAPley Forest
+# `shapleyforest`: SHAPley Forest
 
 UNDER DEVELOPMENT R Package
 
