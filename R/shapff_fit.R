@@ -784,7 +784,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 #' 
 #' # see `Female Mice Liver Expressions` vignette for detailed tutorial.
 #' data("Liver_Exp")
-#' Liver_Exp <- final_Liver_Exp
+#' Liver_Exp <- data
 #' weight <- Liver_Exp[, 1]
 #' expression_levels <- Liver_Exp[, -1]
 #' 
