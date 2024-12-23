@@ -49,7 +49,7 @@ To run **`SHAPley Forest`**, these packages must be loaded.
 #| label: load-packages
 #| warning: false
 library(WGCNA)
-library(shapff)
+library(shapleyforest)
 library(fuzzyforest) # remove later
 library(randomForest) # remove later
 library(fastshap) # remove later
