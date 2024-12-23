@@ -2,7 +2,7 @@
 % Please edit documentation in R/shapselect_rf.R
 \name{shapselect_RF}
 \alias{shapselect_RF}
-\title{The selection step of fuzzy forest algorithm}
+\title{Selection step of shapley forest through SHAP values.}
 \usage{
 shapselect_RF(
   X,
@@ -20,26 +20,26 @@ shapselect_RF(
 )
 }
 \arguments{
-\item{X}{A data.frame.
-Each column corresponds to a feature vectors.
+\item{X}{A data.frame. With columns denoting a feature vector.
 Could include additional covariates not a part of
 the original modules.}
 
-\item{y}{Response vector.}
+\item{y}{A Response vector.}
 
-\item{drop_fraction}{A number between 0 and 1.  Percentage of features
-dropped at each iteration.}
+\item{drop_fraction}{A value between 0 and 1 representing the percentage of features
+to be dropped at each iteration.}
 
-\item{number_selected}{Number of features selected by fuzzyforest.}
+\item{number_selected}{Number of features selected at the end of shapley forest.}
 
-\item{mtry_factor}{In the case of regression, \code{mtry} is set to
+\item{mtry_factor}{Number to adjust \code{mtry} for random forest.
+If regression, \code{mtry} is set to
 \code{ceiling}(\eqn{\sqrt(p)}*\code{mtry_factor}).
-In the case of classification, \code{mtry} is set to
+If classication, \code{mtry} is set to
 \code{ceiling}((p/3)*\code{mtry_factor}).  If either
 of these numbers is greater than p, \code{mtry} is
 set to p.}
 
-\item{ntree_factor}{A number greater than 1.  \code{ntree} for each
+\item{ntree_factor}{A number greater than 1 to adjust \code{ntree}.  \code{ntree} for each
 random is \code{ntree_factor} times the number
 of features.  For each random forest, \code{ntree}
 is set to \code{max}(\code{min_ntree},
@@ -49,7 +49,7 @@ is set to \code{max}(\code{min_ntree},
 
 \item{num_processors}{Number of processors used to fit random forests.}
 
-\item{nodesize}{Minimum nodesize}
+\item{nodesize}{Minimum \code{nodesize}}
 
 \item{cl}{Initialized cluster for parallelization. Set \code{cl}
 to \code{NULL} if no parallelization is being ran.}
@@ -60,9 +60,9 @@ values in the screening step. Default is \code{1}. Increasing
 of computational cost.}
 }
 \value{
-A data.frame with the top ranked features.
+A data.frame with final surviving features.
 }
 \description{
-Carries out selection step of fuzzyforest algorithm using SHAP values.
-Returns data.frame with variable importances and top rated features.
+Runs the selection step of shapley forest algorithm if \code{shap_type} = "full".
+Returns data.frame with the final surviving SHAP values and features.
 }

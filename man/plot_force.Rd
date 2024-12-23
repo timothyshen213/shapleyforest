@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_force}
 \alias{plot_force}
-\alias{plot_force.shap_fuzzy_forest}
-\title{Plot SHAP Force Plot for Specific Observations in SHAP Fuzzy Forests}
+\alias{plot_force.shapley_forest}
+\title{Plot SHAP Force Plot for Specific Observations in shapley forest}
 \usage{
 plot_force(object, ...)
 
-\method{plot_force}{shap_fuzzy_forest}(
+\method{plot_force}{shapley_forest}(
   object,
   row_id,
   row_name = NULL,
@@ -20,7 +20,9 @@ plot_force(object, ...)
 )
 }
 \arguments{
-\item{object}{A SHAP Fuzzy Forest object.}
+\item{object}{A \code{shapley_forest} object.}
+
+\item{...}{Obsolete additional arguments.}
 
 \item{row_id}{The row index (or indices) corresponding to the observation(s) to
 be generated on the waterfall plot. Can be character or list.
@@ -48,11 +50,11 @@ Default is \code{TRUE}.}
 A ggplot2 object representing the SHAP force plot.
 }
 \description{
-Generates a force plot for specific observations in a SHAP Fuzzy Forest object.4
+Generates a force plot for specific observations in a \code{shapley_forest} object.
 Plots are created from \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_force(shap_fuzzy_forest)}: Force plot for an object of class "shap_fuzzy_forest" through \code{shapviz}.
+\item \code{plot_force(shapley_forest)}: Force plot for an object of class \code{shapley_forest} through \code{shapviz}.
 
 }}

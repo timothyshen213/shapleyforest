@@ -42,7 +42,7 @@ the screening step.}
 runs SHAPley values at both screening and selection step.
 If \code{after}, \code{shapff} model runs SHAPley values at the end
 of final model and keeps permutation VIMs usage at other steps.
-\code{1} is default.}
+\code{full} is default.}
 
 \item{module_membership}{A vector that specifies the module membership for each
 each feature. See \code{shapwff} for possible method.}
@@ -128,9 +128,104 @@ should be as large as feasibly possible.}
 \value{
 Returns an object of type \code{shapley_forest}, which is a list containing the essential
 output of shapley forests, including a data.frame of selected features and the random forest
-model fitted using those features.
+model fitted using those features. See \code{shapley_forest} for more details.
 }
 \description{
 Runs shapley forest algorithm for feature importance through
 the use of SHAPley values.
+}
+\examples{
+library(WGCNA)
+library(shapleyforest)
+
+# for generating example dataset
+library(mvtnorm)
+
+# Note: shapff requires an already partitioned dataset.
+
+sim_mod <- function(n, p, corr) {
+sigma <- matrix(corr, nrow = p, ncol = p)
+diag(sigma) <- 1
+X <- rmvnorm(n, sigma = sigma)
+return(X)
+}
+
+# parameters
+n <- 100
+p <- 1000
+mtry_factor <- 1
+keep_fraction <- 0.1
+drop_fraction <- 0.25
+
+corr <- 0.8
+
+number_of_groups <- 10
+number_of_mods <- number_of_groups - 1
+p_per_group <- p/number_of_groups
+vim_list <- c(1:3, 901:903)
+vim_interest <- c(1:4, 901:904)
+beta_list <- rep(c(5, 5, 2), 2)
+
+all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+X <- do.call(cbind, all_modules)
+beta <- rep(0, p_per_group * (number_of_mods + 1))
+beta[vim_list] <- beta_list
+
+group_names <- paste0("Group_", seq_len(1000 / 100))
+groups <- rep(group_names, each = 100)
+
+y <- X \%*\% beta + rnorm(n, sd = 0.1)
+y <- as.numeric(y)
+
+X <- as.data.frame(X)
+names(X) <- paste("V", 1:p, sep = "")
+
+screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
+                               mtry_factor = mtry_factor)
+select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
+                               mtry_factor = mtry_factor)
+
+fit <- shapff(X, y, shap_model= "full",
+             module_membership = groups,
+             select_params = select_params, 
+             screen_params = screen_params, 
+             auto_initial = 2, num_processors = 1, 
+             nodesize = 1, debug = 1, verbose = 0, 
+             initial = TRUE)
+
+# print Surviving Final SHAP Values
+fit$final_SHAP
+
+# print Initial Screening Output
+initial_screen
+
+# Importance Plot
+plot_importance(fit)
+
+# Decision Plot
+plot_decisions(fit)
+
+## Prediction
+# Generates new dataset
+# Generate new simulated modules
+new_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+new_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+
+new_X <- do.call(cbind, new_modules)
+new_X <- as.data.frame(new_X)
+names(new_X) <- paste("V", 1:p, sep = "")
+
+# Predict
+predictions = predict(fit, new_X)
+}
+\references{
+Daniel Conn, Tuck Ngun, Christina M. Ramirez (2015). Fuzzy Forests: a New
+WGCNA Based Random Forest Algorithm for Correlated, High-Dimensional Data,
+Journal of Statistical Software, Manuscript in progress.
+
+Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
+
+Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model
+predictions. Advances in neural information processing systems, 30.
 }

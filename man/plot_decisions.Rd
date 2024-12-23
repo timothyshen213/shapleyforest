@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_decisions}
 \alias{plot_decisions}
-\alias{plot_decisions.shap_fuzzy_forest}
-\title{Plot Decision Plot from SHAP Fuzzy Forest}
+\alias{plot_decisions.shapley_forest}
+\title{Plot Decision Plot from shapley forest.}
 \usage{
 plot_decisions(object, ...)
 
-\method{plot_decisions}{shap_fuzzy_forest}(
+\method{plot_decisions}{shapley_forest}(
   object,
   highlight = NULL,
   plot_title = "Decision Plot",
@@ -17,16 +17,32 @@ plot_decisions(object, ...)
 )
 }
 \arguments{
-\item{object}{A SHAP Fuzzy Forest object.}
+\item{object}{A \code{shapley_forest} object.}
+
+\item{...}{Obsolete additional arguments.}
+
+\item{highlight}{A list of final surviving features to display for
+decision plot. If \code{highlight} is \code{NULL}, all final
+surviving features will be used}
+
+\item{plot_title}{Optional. A name for decision plot. Default is \verb{Decision Plot}.}
+
+\item{geom_point}{If \code{TRUE}, it will denote a point at each feature for each
+observation. Default is \code{FALSE}.}
+
+\item{gradient}{A vector denoting the starting color and ending color for
+the gradient of the predicted outputs. Defaults is \code{blue}to
+\code{red}.}
 }
 \value{
-A ggplot2 object representing the SHAP potential interaction matrix.
+A ggplot2 object representing the decision plot.
 }
 \description{
-TO DO
+Creates a decision plot from a \code{shapley_forest} object. Plot is adapted from
+Python's \code{shap} package.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_decisions(shap_fuzzy_forest)}: TO DO.
+\item \code{plot_decisions(shapley_forest)}: Decision plot for an object of class \code{shapley_forest} adapted from Python's \code{shap}.
 
 }}

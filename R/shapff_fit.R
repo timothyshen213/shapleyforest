@@ -15,7 +15,7 @@
 #'                          runs SHAPley values at both screening and selection step.
 #'                          If `after`, \code{shapff} model runs SHAPley values at the end
 #'                          of final model and keeps permutation VIMs usage at other steps.
-#'                          `1` is default.
+#'                          `full` is default.
 #' @param module_membership A vector that specifies the module membership for each
 #'                          each feature. See \code{shapwff} for possible method.
 #' @param min_features      Defines minimum feature allowed for each module. If `debug` is 
@@ -83,14 +83,108 @@
 #'                          should be as large as feasibly possible.
 #' @return Returns an object of type `shapley_forest`, which is a list containing the essential 
 #' output of shapley forests, including a data.frame of selected features and the random forest 
-#' model fitted using those features.
+#' model fitted using those features. See \code{shapley_forest} for more details.
 #' 
 #' @import fuzzyforest
 #' @import randomForest
 #' @import fastshap
 #' 
 #' @importFrom randomForest combine
-
+#' 
+#' @references
+#' Daniel Conn, Tuck Ngun, Christina M. Ramirez (2015). Fuzzy Forests: a New
+#' WGCNA Based Random Forest Algorithm for Correlated, High-Dimensional Data,
+#' Journal of Statistical Software, Manuscript in progress.
+#' 
+#' Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
+#'
+#' Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model 
+#' predictions. Advances in neural information processing systems, 30.
+#'
+#' @examples
+#' library(WGCNA)
+#' library(shapleyforest)
+#' 
+#' # for generating example dataset
+#' library(mvtnorm)
+#' 
+#' # Note: shapff requires an already partitioned dataset.
+#' 
+#' sim_mod <- function(n, p, corr) {
+#' sigma <- matrix(corr, nrow = p, ncol = p)
+#' diag(sigma) <- 1
+#' X <- rmvnorm(n, sigma = sigma)
+#' return(X)
+#' }
+#'
+#' # parameters
+#' n <- 100
+#' p <- 1000
+#' mtry_factor <- 1
+#' keep_fraction <- 0.1
+#' drop_fraction <- 0.25
+#'
+#' corr <- 0.8
+#'
+#' number_of_groups <- 10
+#' number_of_mods <- number_of_groups - 1
+#' p_per_group <- p/number_of_groups
+#' vim_list <- c(1:3, 901:903)
+#' vim_interest <- c(1:4, 901:904)
+#' beta_list <- rep(c(5, 5, 2), 2)
+#'
+#' all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+#' all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+#' X <- do.call(cbind, all_modules)
+#' beta <- rep(0, p_per_group * (number_of_mods + 1))
+#' beta[vim_list] <- beta_list
+#'
+#' group_names <- paste0("Group_", seq_len(1000 / 100))
+#' groups <- rep(group_names, each = 100)
+#'
+#' y <- X %*% beta + rnorm(n, sd = 0.1)
+#' y <- as.numeric(y)
+#'
+#' X <- as.data.frame(X)
+#' names(X) <- paste("V", 1:p, sep = "")
+#'
+#' screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
+#'                                mtry_factor = mtry_factor)
+#' select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
+#'                                mtry_factor = mtry_factor)
+#'
+#' fit <- shapff(X, y, shap_model= "full",
+#'              module_membership = groups,
+#'              select_params = select_params, 
+#'              screen_params = screen_params, 
+#'              auto_initial = 2, num_processors = 1, 
+#'              nodesize = 1, debug = 1, verbose = 0, 
+#'              initial = TRUE)
+#'
+#' # print Surviving Final SHAP Values
+#' fit$final_SHAP
+#'
+#' # print Initial Screening Output
+#' initial_screen
+#'
+#' # Importance Plot
+#' plot_importance(fit)
+#'
+#' # Decision Plot
+#' plot_decisions(fit)
+#' 
+#' ## Prediction
+#' # Generates new dataset
+#' # Generate new simulated modules
+#' new_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+#' new_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+#'
+#' new_X <- do.call(cbind, new_modules)
+#' new_X <- as.data.frame(new_X)
+#' names(new_X) <- paste("V", 1:p, sep = "")
+#' 
+#' # Predict
+#' predictions = predict(fit, new_X)
 
 shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
                    min_features = 20, verbose = 1, debug = 2, 
@@ -558,7 +652,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   select_mods <- select_mods[match(select_order, select_X)]
   shap_final_list[, 3][shap_final_list[, 1] %in% names(final_X)] <- select_mods
   # output function
-  out <- shap_fuzzy_forest(final_rf, final_module_membership,
+  out <- shapley_forest(final_rf, final_module_membership,
                            survivor_list=survivor_list,
                            selection_list=selection_list, 
                            final_shap = shap_final_list,
@@ -593,21 +687,22 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 #'                          runs SHAPley values at both screening and selection step.
 #'                          If `after`, \code{shapff} model runs SHAPley values at the end
 #'                          of final model and keeps permutation VIMs usage at other steps.
-#'                          `1` is default.
-#' @param module_membership A vector that specifies the module membership for each
-#'                          each feature. See \code{shapwff} for possible method.
-#' @param min_features      Defines minimum feature allowed for each module. If `debug` is 
+#'                          `full` is default.
+#' @param min_features      Defines minimum feature allowed for each module. If `debug` is `1`
+#'                          or `2`, modules below `min_features` after WGCNA call will be
+#'                          prompted to the user. See \code{debug} for more info. During
+#'                          screening and selection step, if `debug` is 
 #'                          not `-1`, modules below `min_features` will only keep non-zero
 #'                          important features during each Recursive Feature Elimination
-#'                          iteration
+#'                          iteration.
 #' @param verbose           Defines the warning message protocol. If `0`, no warning or UI
 #'                          will be displayed. If `1`, warnings and UI progress bar will
 #'                          be displayed.
 #' @param debug             Sets the debugging procedures. If `-1`, all debugging functions
 #'                          will be bypassed. If `0`, debugging at the WGCNA will be bypassed.
-#'                          Note for \code{shapff}, `0` has no effect. If `1`, debugging during
-#'                          Recursive Feature Elimination at both screening and selection step 
-#'                          will be bypassed. If `2`, all debugging functions will be ran. Below
+#'                          If `1`, debugging during Recursive Feature Elimination at both screening 
+#'                          and selection step will be bypassed. 
+#'                          If `2`, all debugging functions will be ran. Below
 #'                          are the debugging features. Debugging at WGCNA detects if each module
 #'                          is below the \code{min_features}. Debugging at RFE will keep only 
 #'                          non zero important feature at each elimination step for modules below
@@ -659,9 +754,9 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 #' @param final_nsim        Number of Monte Carlo repetitions for estimating SHAP
 #'                          values in the selection step. Default is `1`. \code{final_nsim}
 #'                          should be as large as feasibly possible.
-#' @return Returns an object of type fuzzy_forest, which is a list containing the essential 
-#' output of fuzzy forests, including a data.frame of selected features and the random forest 
-#' model fitted using those features.
+#' @return Returns an object of type `shapley_forest`, which is a list containing the essential 
+#' output of shapley forests, including a data.frame of selected features and the random forest 
+#' model fitted using those features. See \code{shapley_forest} for more details.
 #' 
 #' @import fuzzyforest
 #' @import randomForest
@@ -670,21 +765,58 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 # @importFrom randomForest combine
 #' 
 #' @references
-#' Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
-#'
-#' Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model predictions. Advances in neural information processing systems, 30.
-#'
-#' Daniel Conn, Tuck Ngun, Christina M. Ramirez (2015). Fuzzy Forests: a New
-#' WGCNA Based Random Forest Algorithm for Correlated, High-Dimensional Data,
-#' Journal of Statistical Software, Manuscript in progress.
-#'
 #' Bin Zhang and Steve Horvath (2005) "A General Framework for Weighted Gene
 #' Co-Expression Network Analysis", Statistical Applications in Genetics and
 #' Molecular Biology: Vol. 4: No. 1, Article 17
-#' @examples
-#' TODO
 #' 
-
+#' Daniel Conn, Tuck Ngun, Christina M. Ramirez (2015). Fuzzy Forests: a New
+#' WGCNA Based Random Forest Algorithm for Correlated, High-Dimensional Data,
+#' Journal of Statistical Software, Manuscript in progress.
+#' 
+#' Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
+#'
+#' Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model 
+#' predictions. Advances in neural information processing systems, 30.
+#'
+#' @examples
+#' library(WGCNA)
+#' library(shapleyforest)
+#' 
+#' # see `Female Mice Liver Expressions` vignette for detailed tutorial.
+#' data("Liver_Exp")
+#' Liver_Exp <- final_Liver_Exp
+#' weight <- Liver_Exp[, 1]
+#' expression_levels <- Liver_Exp[, -1]
+#' 
+#' # parameters
+#' mtry_factor <- 1
+#' drop_fraction <- 0.25
+#' number_selected <- 10
+#' keep_fraction <- 0.05
+#' min_ntree <- 5000
+#' ntree_factor <- 5
+#' final_ntree <- 5000
+#' 
+#' screen_params <- screen_control(drop_fraction = drop_fraction, 
+#' keep_fraction = keep_fraction,
+#' min_ntree = min_ntree, mtry_factor = mtry_factor, 
+#' ntree_factor = ntree_factor)
+#' select_params <- select_control(drop_fraction = drop_fraction, 
+#'                                number_selected = number_selected,
+#'                                min_ntree = min_ntree, mtry_factor = mtry_factor, 
+#'                                ntree_factor = ntree_factor)
+#' WGCNA_params <- WGCNA_control(power = 6, minModuleSize = 30, TOMType = "unsigned",
+#'                               reassignThreshold = 0, mergeCutHeight = 0.25, 
+#'                               numericLabels = TRUE, pamRespectsDendro = FALSE)
+#'
+#' fit <- shapwff(expression_levels, weight, shap_model = 1, 
+#'                               shap_type = "shapley", WGCNA_params = WGCNA_params, 
+#'                               select_params = select_params, 
+#'                               screen_params = screen_params, 
+#'                               final_ntree = final_ntree, num_processors=1)
+#' # Final SHAP values
+#' fit$final_SHAP
+#' 
 shapwff <- function(X, y, Z=NULL, shap_model = "full",
                     WGCNA_params=WGCNA_control(p=6),
                     min_features=20, verbose = 1, debug = 2, 
@@ -694,6 +826,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
                     final_ntree=500, num_processors, parallel=1, nodesize,
                     test_features=NULL, test_y=NULL, nsim=1, final_nsim=100) {
   
+  ## validating prerequisites
   if ( !("package:WGCNA" %in% search()) ) {
     stop("WGCNA must be loaded and attached. Type library(WGCNA) to do so.",
          call. = FALSE)
@@ -701,7 +834,8 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   if (!(is.vector(y) || is.factor(y))) {
     stop("y must be vector or factor")
   }
-  # WGCNA yields errors if X is an integer, here we convert integers to numeric.
+  
+  # Convert X to numeric for WGCNA
   integer_test <- sapply(X, is.integer)
   if( sum(integer_test) > 0 ) {
     ints <- which(integer_test == TRUE)
@@ -711,6 +845,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
   if (sum(numeric_test) != dim(X)[2]) {
     stop("The columns of X must be numeric.")
   }
+  
   CLASSIFICATION <- is.factor(y)
   if(CLASSIFICATION == TRUE) {
     if(missing(nodesize)){
@@ -754,44 +889,59 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
     options(warn = -1)
   }
   
+  # Set Up for Parameters at each step
   WGCNA_control <- WGCNA_params
   screen_control <- screen_params
   select_control <-  select_params
+  
+  # Define WGCNA arguments
   WGCNA_args <- list(X,WGCNA_control$power)
   WGCNA_args <- c(WGCNA_args, WGCNA_control$extra_args)
   names(WGCNA_args) <- c("datExpr", "power", names(WGCNA_control$extra_args))
-  if (verbose == 0){
+  
+  # Run WGCNA dependent on verbose setting
+  if (verbose == 0){ # supresses messages
     invisible(capture.output({
       suppressWarnings(suppressMessages({
         bwise <- do.call("blockwiseModules", WGCNA_args)
       }))
     }))
-  } else {
+  } else { # allows for WGCNA messages
     bwise <- do.call("blockwiseModules", WGCNA_args)
   }
-  module_membership <- bwise$colors
-  screen_drop_fraction <- screen_control$drop_fraction
-  screen_keep_fraction <- screen_control$keep_fraction
-  screen_mtry_factor <- screen_control$mtry_factor
-  screen_ntree_factor <- screen_control$ntree_factor
-  screen_min_ntree <- screen_control$min_ntree
-  min_features <- min_features
   
-  if (!debug %in% c(-1, 0)){
-    feature_counts <- table(module_membership)
+  # Debug: if low frequency modules exists, users are warned
+  
+  min_features <- min_features # defined low frequency threshold
+  
+  if (!debug %in% c(-1, 0)){ # debug only runs if desired by user
+    # finds low frequency modules
+    feature_counts <- table(module_membership) 
     low_frequency_modules <- feature_counts[feature_counts <= min_features]
     
+    # prompts user if low frequency modules exist
     if (length(low_frequency_modules) > 0) {
       warning(sprintf("\n WGCNA - Some modules contain fewer than % s features.", min_features))
       response <- readline(prompt = "Do you wish to continue? (yes/no): ")
       if (tolower(response) != "yes") {
         stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
                          paste(capture.output(print(low_frequency_modules)), 
-                               collapse = "\n")), "\n"))
+                               collapse = "\n")), "\n")) # stops and prints module freq counts
       }
     }
   }
   
+  # Gathers module membership for shapff
+  module_membership <- bwise$colors
+  
+  # Sets up for screening parameters
+  screen_drop_fraction <- screen_control$drop_fraction
+  screen_keep_fraction <- screen_control$keep_fraction
+  screen_mtry_factor <- screen_control$mtry_factor
+  screen_ntree_factor <- screen_control$ntree_factor
+  screen_min_ntree <- screen_control$min_ntree
+  
+  # Begins Screening Step, calls shapff
   if (verbose != "0"){ cat("Screening Step ... \n")}
   out <- shapff(X, y, Z, shap_model, module_membership,
                 min_features, verbose, debug, initial, 
@@ -799,8 +949,12 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
                 select_control, final_ntree,
                 num_processors, nodesize=nodesize,
                 test_features=test_features, test_y=test_y)
+  
+  # adds WGCNA object at output
   out$WGCNA_object <- bwise
   
+  # resets warn function
   options(warn = 1)
+  
   return(out)
 }

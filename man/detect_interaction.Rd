@@ -2,12 +2,12 @@
 % Please edit documentation in R/detect_interaction.R
 \name{detect_interaction}
 \alias{detect_interaction}
-\title{Potential interaction variables for fuzzy_forest object}
+\title{Potential interaction variables for \code{shapley_forest} object}
 \usage{
 detect_interaction(object, thresh, all = FALSE, verbose = TRUE)
 }
 \arguments{
-\item{object}{A fuzzy_forest object.}
+\item{object}{A \code{shapley_forest} object.}
 
 \item{thresh}{Threshold for interaction strength. Threshold should
 be between \code{0} and \code{1} where the higher values
@@ -18,12 +18,12 @@ Default is \code{FALSE}.}
 
 \item{verbose}{Hide potential interaction printout. Defaul is \code{FALSE}}
 
-\item{...}{Additional arguments not in use.}
+\item{...}{Obsolete additional arguements.}
 }
 \value{
-A dataframe of potential pairwise interactions
+A data.frame of potential pairwise interactions
 }
 \description{
-Calculates potential interaction variables from the fuzzy_forest
+Calculates potential interaction variables from the \code{shapley_forest}
 object for a given threshold
 }

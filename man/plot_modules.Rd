@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_modules}
 \alias{plot_modules}
-\alias{plot_modules.shap_fuzzy_forest}
-\title{Plot Module Plot from SHAPley Forest}
+\alias{plot_modules.shapley_forest}
+\title{Plot Module Plot from shapley forest}
 \usage{
 plot_modules(object, ...)
 
-\method{plot_modules}{shap_fuzzy_forest}(
+\method{plot_modules}{shapley_forest}(
   object,
   main = NULL,
   xlab = NULL,
@@ -17,17 +17,30 @@ plot_modules(object, ...)
 )
 }
 \arguments{
-\item{object}{A SHAPley Forest object.}
+\item{object}{A \code{shapley_forest} object.}
+
+\item{...}{Obsolete additional arguments.}
+
+\item{main}{Main title for module plot. Default is \code{NULL} and will title
+"Module Membership Distribution."}
+
+\item{xlab}{Title for x-axis. Default is \code{NULL} and will be titled "Module".}
+
+\item{ylab}{Title for y-axis. Default is \code{NULL} and will be titled
+"Percentage of features in module."}
+
+\item{module_labels}{Optional. A list of labels for the modules. Default is \code{NULL}.}
 }
 \value{
 A ggplot object representing the module membership distribution colored by importance.
 }
 \description{
+Generates a module distribution plot and highlights important features that survived
+after shapley forest algorithm.
 The plot function is derived from \link[fuzzyforest]{fuzzyforest}'s modplot function.
-TO DO
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_modules(shap_fuzzy_forest)}: TO DO.
+\item \code{plot_modules(shapley_forest)}: Module plot for an object of class \code{shapley_forest} adapted from \code{fuzzyforest}.
 
 }}

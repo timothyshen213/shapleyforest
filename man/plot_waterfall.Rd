@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_waterfall}
 \alias{plot_waterfall}
-\alias{plot_waterfall.shap_fuzzy_forest}
-\title{Plot Waterfall for Specific Observations in SHAP Fuzzy Forests}
+\alias{plot_waterfall.shapley_forest}
+\title{Plot Waterfall for Specific Observations in shapley forest}
 \usage{
 plot_waterfall(object, ...)
 
-\method{plot_waterfall}{shap_fuzzy_forest}(
+\method{plot_waterfall}{shapley_forest}(
   object,
   row_id,
   row_name = NULL,
@@ -21,7 +21,9 @@ plot_waterfall(object, ...)
 )
 }
 \arguments{
-\item{object}{A SHAP Fuzzy Forest object.}
+\item{object}{A \code{shapley_forest} object.}
+
+\item{...}{Obsolete additional arguments.}
 
 \item{row_id}{The row index (or indices) corresponding to the observation(s) to
 be generated on the waterfall plot. Can be character or list.
@@ -53,11 +55,11 @@ Default is \code{TRUE}.}
 A \code{\link[ggplot2]{ggplot2}} object representing the waterfall plot.
 }
 \description{
-Generates a waterfall plot for specific observation(s) in a SHAP Fuzzy Forest object.
+Generates a waterfall plot for specific observation(s) in a \code{shapley_forest} object.
 Plots are  created from \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_waterfall(shap_fuzzy_forest)}: Waterfall plot for an object of class "shap_fuzzy_forest" through \code{shapviz}.
+\item \code{plot_waterfall(shapley_forest)}: Waterfall plot for an object of class \code{shapley_forest} through \code{shapviz}.
 
 }}

@@ -42,7 +42,7 @@ the screening step.}
 runs SHAPley values at both screening and selection step.
 If \code{after}, \code{shapff} model runs SHAPley values at the end
 of final model and keeps permutation VIMs usage at other steps.
-\code{1} is default.}
+\code{full} is default.}
 
 \item{WGCNA_params}{WGCNA parameters.
 See \code{\link[WGCNA]{blockwiseModules}} and
@@ -50,10 +50,13 @@ See \code{\link[WGCNA]{blockwiseModules}} and
 \code{WGCNA_params} is an object of type
 \code{WGCNA_control}.}
 
-\item{min_features}{Defines minimum feature allowed for each module. If \code{debug} is
+\item{min_features}{Defines minimum feature allowed for each module. If \code{debug} is \code{1}
+or \code{2}, modules below \code{min_features} after WGCNA call will be
+prompted to the user. See \code{debug} for more info. During
+screening and selection step, if \code{debug} is
 not \code{-1}, modules below \code{min_features} will only keep non-zero
 important features during each Recursive Feature Elimination
-iteration}
+iteration.}
 
 \item{verbose}{Defines the warning message protocol. If \code{0}, no warning or UI
 will be displayed. If \code{1}, warnings and UI progress bar will
@@ -61,9 +64,9 @@ be displayed.}
 
 \item{debug}{Sets the debugging procedures. If \code{-1}, all debugging functions
 will be bypassed. If \code{0}, debugging at the WGCNA will be bypassed.
-Note for \code{shapff}, \code{0} has no effect. If \code{1}, debugging during
-Recursive Feature Elimination at both screening and selection step
-will be bypassed. If \code{2}, all debugging functions will be ran. Below
+If \code{1}, debugging during Recursive Feature Elimination at both screening
+and selection step will be bypassed.
+If \code{2}, all debugging functions will be ran. Below
 are the debugging features. Debugging at WGCNA detects if each module
 is below the \code{min_features}. Debugging at RFE will keep only
 non zero important feature at each elimination step for modules below
@@ -127,33 +130,67 @@ of computational cost.}
 \item{final_nsim}{Number of Monte Carlo repetitions for estimating SHAP
 values in the selection step. Default is \code{1}. \code{final_nsim}
 should be as large as feasibly possible.}
-
-\item{module_membership}{A vector that specifies the module membership for each
-each feature. See \code{shapwff} for possible method.}
 }
 \value{
-Returns an object of type fuzzy_forest, which is a list containing the essential
-output of fuzzy forests, including a data.frame of selected features and the random forest
-model fitted using those features.
+Returns an object of type \code{shapley_forest}, which is a list containing the essential
+output of shapley forests, including a data.frame of selected features and the random forest
+model fitted using those features. See \code{shapley_forest} for more details.
 }
 \description{
 Runs a weighted gene correlated network analysis. Then runs shapley forest
 algorithm for feature importance through the use of SHAPley values.
 }
 \examples{
-TODO
+library(WGCNA)
+library(shapleyforest)
+
+# see `Female Mice Liver Expressions` vignette for detailed tutorial.
+data("Liver_Exp")
+Liver_Exp <- final_Liver_Exp
+weight <- Liver_Exp[, 1]
+expression_levels <- Liver_Exp[, -1]
+
+# parameters
+mtry_factor <- 1
+drop_fraction <- 0.25
+number_selected <- 10
+keep_fraction <- 0.05
+min_ntree <- 5000
+ntree_factor <- 5
+final_ntree <- 5000
+
+screen_params <- screen_control(drop_fraction = drop_fraction, 
+keep_fraction = keep_fraction,
+min_ntree = min_ntree, mtry_factor = mtry_factor, 
+ntree_factor = ntree_factor)
+select_params <- select_control(drop_fraction = drop_fraction, 
+                               number_selected = number_selected,
+                               min_ntree = min_ntree, mtry_factor = mtry_factor, 
+                               ntree_factor = ntree_factor)
+WGCNA_params <- WGCNA_control(power = 6, minModuleSize = 30, TOMType = "unsigned",
+                              reassignThreshold = 0, mergeCutHeight = 0.25, 
+                              numericLabels = TRUE, pamRespectsDendro = FALSE)
+
+fit <- shapwff(expression_levels, weight, shap_model = 1, 
+                              shap_type = "shapley", WGCNA_params = WGCNA_params, 
+                              select_params = select_params, 
+                              screen_params = screen_params, 
+                              final_ntree = final_ntree, num_processors=1)
+# Final SHAP values
+fit$final_SHAP
 
 }
 \references{
-Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
-
-Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model predictions. Advances in neural information processing systems, 30.
+Bin Zhang and Steve Horvath (2005) "A General Framework for Weighted Gene
+Co-Expression Network Analysis", Statistical Applications in Genetics and
+Molecular Biology: Vol. 4: No. 1, Article 17
 
 Daniel Conn, Tuck Ngun, Christina M. Ramirez (2015). Fuzzy Forests: a New
 WGCNA Based Random Forest Algorithm for Correlated, High-Dimensional Data,
 Journal of Statistical Software, Manuscript in progress.
 
-Bin Zhang and Steve Horvath (2005) "A General Framework for Weighted Gene
-Co-Expression Network Analysis", Statistical Applications in Genetics and
-Molecular Biology: Vol. 4: No. 1, Article 17
+Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
+
+Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model
+predictions. Advances in neural information processing systems, 30.
 }

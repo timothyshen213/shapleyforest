@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_importance}
 \alias{plot_importance}
-\alias{plot_importance.shap_fuzzy_forest}
-\title{Plot Feature Importance for SHAP Fuzzy Forests}
+\alias{plot_importance.shapley_forest}
+\title{Plot Feature Importance for shapley forest}
 \usage{
 plot_importance(object, ...)
 
-\method{plot_importance}{shap_fuzzy_forest}(
+\method{plot_importance}{shapley_forest}(
   object,
   kind = "beeswarm",
   color_bar_title = "Feature Value",
@@ -20,7 +20,9 @@ plot_importance(object, ...)
 )
 }
 \arguments{
-\item{object}{A SHAP Fuzzy Forest object.}
+\item{object}{A \code{shapley_forest} object.}
+
+\item{...}{Obsolete additional arguments.}
 
 \item{kind}{The type of plot to generate. Options are "bar", "beeswarm",
 or "both". Default is "beeswarm".}
@@ -48,12 +50,12 @@ Default is \code{list(begin = 0.25, end = 0.75, option = "viridis")}.}
 A \code{\link[ggplot2]{ggplot2}} object representing the feature importance plot.
 }
 \description{
-Generates a feature importance plot from SHAP Fuzzy Forest object. Three types
+Generates a feature importance plot from \code{shapley_forest} object. Three types
 of plots can be generated: bar, beeswarm, and both plots. Plots are created
 from \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_importance(shap_fuzzy_forest)}: Importance plot for an object of class "shap_fuzzy_forest" through \code{shapviz}.
+\item \code{plot_importance(shapley_forest)}: Importance plot for an object of class \code{shapley_forest} through \code{shapviz}.
 
 }}
