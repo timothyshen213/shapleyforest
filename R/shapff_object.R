@@ -1,6 +1,6 @@
 #' Shapley Forest loading Message
 .onAttach <- function(libname, pkgname) {
-  packageStartupMessage("Entering the shapley forest ... Branching to the Beta Version--UNDER DEVELOPMENT")
+  packageStartupMessage("Entering the shapley forest ... branching to the Beta Version--UNDER DEVELOPMENT")
 }
 
 #' SHAPley Forest Object
