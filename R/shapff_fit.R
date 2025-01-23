@@ -257,7 +257,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   # adjusts keep_fraction if below minimum threshold
   if(ncol(X)*keep_fraction < select_control$number_selected){
     if (verbose != 0){
-      warning(c("\n ncol(X)*keep_fraction < number_selected", "\n",
+      warning(c("\n\n ncol(X)*keep_fraction < number_selected", "\n",
                 "number_selected will be set to floor(ncol(X)*keep_fraction)"))
     }
     select_control$number_selected <- max(floor(ncol(X)*keep_fraction), 1)
@@ -318,7 +318,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
         # if module has low features, only keep non zero important features
         if (num_features <= min_features){
           if (verbose != 0){
-            warning(sprintf("\n Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
+            warning(sprintf("\n\n Module %s has fewer than %d features! All non-zero important features will be kept during screening.", 
                             module_list[i], min_features))
           }
           keep = TRUE
@@ -453,23 +453,23 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
       write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
       assign("initial_screen", initial_screen, envir = .GlobalEnv)
       if (verbose != 0){
-        cat("Dataframe saved as 'initial_screen.csv'.\n")
+        cat("\n\n Dataframe saved as 'initial_screen.csv'.\n")
       }
       if (auto_initial == "1"){ # stops running
         options(warn = 1)
-        stop("Execution stopped as per user choice.\n")
+        stop("\n\n Execution stopped as per user choice.\n")
       }
     } else { # skips all
       if (auto_initial == "3"){
         options(warn = 1)
-        stop("Execution stopped as per user choice.\n")
+        stop("\n\n Execution stopped as per user choice.\n")
       }
     }
     initial = FALSE
   }
   
   if (initial == TRUE){
-    cat("\nDisplaying Initial Screen (First Step) Variable Importance ... ")
+    cat("\n\nDisplaying Initial Screen (First Step) Variable Importance ... ")
     print(knitr::kable(initial_screen))
     
     # User given an option to save initial screening
@@ -488,15 +488,15 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     if (tolower(save_prompt) %in% c("1", "2")) { # save output
       write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
       assign("initial_screen", initial_screen, envir = .GlobalEnv)
-      cat("Dataframe saved as 'initial_screen.csv'.\n")
+      cat("\n\nDataframe saved as 'initial_screen.csv'.\n")
       if (tolower(save_prompt) == "1"){ # stops running
         options(warn = 1)
-        stop("Execution stopped as per user choice.\n")
+        stop("\n\nExecution stopped as per user choice.\n")
       }
     } else { # skips all
       if (tolower(save_prompt) == "3"){
         options(warn = 1)
-        stop("Execution stopped as per user choice.\n")
+        stop("\n\nExecution stopped as per user choice.\n")
       }
     }
   }
@@ -924,7 +924,7 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
     
     # prompts user if low frequency modules exist
     if (length(low_frequency_modules) > 0) {
-      warning(sprintf("\n WGCNA - Some modules contain fewer than % s features.", min_features))
+      warning(sprintf("\n\n WGCNA - Some modules contain fewer than % s features.", min_features))
       response <- readline(prompt = "Do you wish to continue? (yes/no): ")
       if (tolower(response) != "yes") {
         stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
