@@ -910,6 +910,9 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
     bwise <- do.call("blockwiseModules", WGCNA_args)
   }
   
+  # Gathers module membership for shapff
+  module_membership <- bwise$colors
+  
   # Debug: if low frequency modules exists, users are warned
   
   min_features <- min_features # defined low frequency threshold
@@ -930,9 +933,6 @@ shapwff <- function(X, y, Z=NULL, shap_model = "full",
       }
     }
   }
-  
-  # Gathers module membership for shapff
-  module_membership <- bwise$colors
   
   # Sets up for screening parameters
   screen_drop_fraction <- screen_control$drop_fraction
