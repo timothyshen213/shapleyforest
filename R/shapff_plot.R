@@ -382,10 +382,14 @@ plot_potential_interactions.shapley_forest <- function(object,...){
 #' Python's `shap` package.
 #' 
 #' @export
-#' @param object          A `shapley_forest` object.
+#' @param object          A `shapley_forest` object. If `just_shap` is `TRUE`, a
+#'                        `data.frame` of shapley values is expected instead.
 #' @param highlight       A list of final surviving features to display for 
 #'                        decision plot. If `highlight` is `NULL`, all final
 #'                        surviving features will be used
+#' @param just_shap       If `just_shap` is `TRUE`, the `object` is expected to only
+#'                        contain a `data.frame` of shapley values--not a `shapley_forest`
+#'                        object.
 #' @param plot_title      Optional. A name for decision plot. Default is `Decision Plot`.
 #' @param geom_point      If `TRUE`, it will denote a point at each feature for each 
 #'                        observation. Default is `FALSE`.
@@ -404,13 +408,22 @@ plot_decisions <- function(object,...){
 #' @describeIn plot_decisions
 #'   Decision plot for an object of class `shapley_forest` adapted from Python's `shap`.
 #' @export
-plot_decisions.shapley_forest <- function(object, highlight = NULL, plot_title = "Decision Plot", 
-                                             geom_point = FALSE, 
-                                             gradient = c("blue", "red"), ...){
+plot_decisions.shapley_forest <- function(object, highlight = NULL, 
+                                          just_shap = FALSE,
+                                          plot_title = "Decision Plot", 
+                                          geom_point = FALSE, 
+                                          gradient = c("blue", "red"), ...){
 
   
   # store fastshap object
-  shap_values <- object$shap_obj$shapley_values
+  if (just_shap == FALSE){
+    shap_values <- object$shap_obj$shapley_values
+  } else {
+    if (!is.data.frame(object)){
+      stop("object not a data frame. Should just_shap be false?")
+    }
+    shap_values <- object
+  }
   
   #if (object$shap_type == "tree"){
   #  shap_values <- object$shap_obj$shaps

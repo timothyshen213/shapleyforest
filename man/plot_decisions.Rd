@@ -10,6 +10,7 @@ plot_decisions(object, ...)
 \method{plot_decisions}{shapley_forest}(
   object,
   highlight = NULL,
+  just_shap = FALSE,
   plot_title = "Decision Plot",
   geom_point = FALSE,
   gradient = c("blue", "red"),
@@ -17,13 +18,18 @@ plot_decisions(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{shapley_forest} object. If \code{just_shap} is \code{TRUE}, a
+\code{data.frame} of shapley values is expected instead.}
 
 \item{...}{Obsolete additional arguments.}
 
 \item{highlight}{A list of final surviving features to display for
 decision plot. If \code{highlight} is \code{NULL}, all final
 surviving features will be used}
+
+\item{just_shap}{If \code{just_shap} is \code{TRUE}, the \code{object} is expected to only
+contain a \code{data.frame} of shapley values--not a \code{shapley_forest}
+object.}
 
 \item{plot_title}{Optional. A name for decision plot. Default is \verb{Decision Plot}.}
 
