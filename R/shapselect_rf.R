@@ -69,7 +69,7 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, 
                        randomForest(module , y, ntree = ntree, mtry = mtry,
                                     importance = TRUE, scale = FALSE, nodesize=nodesize))
       }
-      if (parallel == 2){
+      if (parallel == 1){
         rf <- foreach(ntree = rep(ntree / num_processors, num_processors),
                       .combine = randomForest::combine,
                       .packages = 'randomForest') %dopar% {
