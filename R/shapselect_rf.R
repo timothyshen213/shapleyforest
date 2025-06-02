@@ -62,12 +62,21 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, 
   while (num_features >= target){ # runs until it hits target
     # runs random forest
     if(num_processors > 1) {
-      rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
-                             , .combine = randomforest::combine, .packages = 'randomForest'),
-                     #second argument to '%dopar%'
-                     randomForest(current_X , y, ntree = ntree, mtry = mtry,
-                                  importance = TRUE, scale = FALSE,
-                                  nodesize=nodesize))
+      if (parallel == 1){
+        rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
+                               , .combine = randomForest::combine, .packages = 'randomForest'),
+                       #second argument to '%dopar%'
+                       randomForest(module , y, ntree = ntree, mtry = mtry,
+                                    importance = TRUE, scale = FALSE, nodesize=nodesize))
+      }
+      if (parallel == 2){
+        rf <- foreach(ntree = rep(ntree / num_processors, num_processors),
+                      .combine = randomForest::combine,
+                      .packages = 'randomForest') %dopar% {
+                        randomForest(module , y, ntree = ntree, mtry = mtry,
+                                     importance = TRUE, scale = FALSE, nodesize = nodesize)
+                      }
+      }
     }
     if(num_processors == 1) {
       rf <- randomForest(current_X, y, ntree = ntree, mtry = mtry,

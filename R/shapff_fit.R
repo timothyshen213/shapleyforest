@@ -329,11 +329,21 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
       
       # runs Random Forest
       if(num_processors > 1) {
-        rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
-                               , .combine = randomForest::combine, .packages = 'randomForest'),
-                       #second argument to '%dopar%'
-                       randomForest(module , y, ntree = ntree, mtry = mtry,
-                                    importance = TRUE, scale = FALSE, nodesize=nodesize))
+        if (parallel == 1){
+          rf = `%dopar%`(foreach(ntree = rep(ntree/num_processors, num_processors)
+                                 , .combine = randomForest::combine, .packages = 'randomForest'),
+                         #second argument to '%dopar%'
+                         randomForest(module , y, ntree = ntree, mtry = mtry,
+                                      importance = TRUE, scale = FALSE, nodesize=nodesize))
+        }
+        if (parallel == 2){
+          rf <- foreach(ntree = rep(ntree / num_processors, num_processors),
+                        .combine = randomForest::combine,
+                        .packages = 'randomForest') %dopar% {
+                          randomForest(module , y, ntree = ntree, mtry = mtry,
+                                       importance = TRUE, scale = FALSE, nodesize = nodesize)
+                        }
+        }
       }
       if(num_processors == 1) {
         rf <- randomForest(module, y, ntree = ntree, mtry = mtry,
