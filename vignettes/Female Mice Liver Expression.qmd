@@ -53,7 +53,7 @@ library(shapleyforest)
 library(fuzzyforest) # remove later
 library(randomForest) # remove later
 library(fastshap) # remove later
-
+library(doParallel)
 ```
 
 Other packages used in this vignette outside of **`SHAPley Forest`**.
@@ -278,7 +278,7 @@ First we prepare the data set for **`SHAPley Forest`** . Note `expression_levels
 # to skip data preprocessing:
 # data("Liver_Exp")
 
-Liver_Exp <- final_Liver_Exp
+# Liver_Exp <- final_Liver_Exp
 weight <- Liver_Exp[, 1]
 expression_levels <- Liver_Exp[, -1]
 ```
@@ -330,6 +330,13 @@ ffs_fit <- shapwff(expression_levels, weight, shap_model = 1,
                    select_params = select_params, 
                    screen_params = screen_params, 
                    final_ntree = final_ntree, num_processors=1)
+
+ffs_fit <- shapwff(expression_levels, weight, shap_model = "full", 
+                   WGCNA_params = WGCNA_params, 
+                   select_params = select_params, 
+                   screen_params = screen_params, 
+                   final_ntree = final_ntree, num_processors=2, parallel = 1,
+                   min_features = 10)
 ```
 
 #### Interpreting The Result
