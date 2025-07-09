@@ -22,7 +22,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
                    select_params = fuzzyforest:::select_control(min_ntree=5000),
                    final_ntree = 5000,
-                   num_processors = n_cores, nodesize, 
+                   num_processors = 1, nodesize, 
                    test_features=NULL, test_y=NULL, nsim = 1, 
                    final_nsim = 100, seed = 1234) {
   
@@ -99,10 +99,9 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     seed = seed
   )
   
-  assign("screen_result", screen_result, envir = .GlobalEnv)
-  
-  survivors <- screen_result$survivor_results
+  survivor_results <- screen_result$survivor_results
   initial_screen <- screen_result$initial_screen
+  
   
   ## Initial Screening Output Procedure
   
@@ -163,8 +162,13 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   # verbose UI
   if (verbose != 0){cat("\nSelection Step ...")}
   
-  (survivor_list <- survivors)
-  (names(survivor_list) <- module_list)
+  # combines all survivor lists from all modules
+  survivors <- lapply(survivor_results, `[[`, "survivor")
+  initial_screen <- do.call(rbind, lapply(survivor_results, `[[`, "screen_df"))
+  names(survivors) <- module_list
+  
+  survivor_list <- survivors
+  names(survivor_list) <- module_list
   survivors <- do.call('rbind', survivors)
   survivors <- as.data.frame(survivors, stringsAsFactors = FALSE)
   survivors[, 2] <- as.numeric(survivors[, 2])
@@ -188,7 +192,7 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
                                     select_args$mtry_factors,
                                     select_args$ntree_factor, select_args$min_ntree,
                                     select_args$num_processors, select_args$nodesize, select_args$cl,
-                                    nsim = nsim)
+                                    nsim = nsim, seed = seed)
   }
   
   # RFE via permutation VIMs
@@ -249,7 +253,8 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     probability = CLASSIFICATION,        
     classification = TRUE,
     verbose = FALSE,
-    num.threads = 1
+    num.threads = 1,
+    seed = seed
   )
   
   # extracts module membership of final survivors
@@ -326,6 +331,10 @@ shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   # verbose message
   if (verbose != 0){cat("Done \n")}
   
+  # make sure make sure parallel is off now
+  if (num_processors > 1) {
+    registerDoSEQ()
+  }
   return(out)
 }
 
@@ -385,59 +394,67 @@ shapscreen_RF <- function(X, y, module_list, module_membership, screen_control,
       }
       
       # runs Random Forest
-      rf <- randomForest(module, y, ntree = ntree, mtry = mtry,
-                         importance = TRUE, scale = FALSE,
-                         nodesize = nodesize)
+      rf <- ranger(
+        formula = y ~ .,
+        data = data.frame(y = y, module),
+        num.trees = ntree,
+        mtry = mtry,
+        importance = "permutation",
+        min.node.size = nodesize,
+        keep.inbag = TRUE,
+        probability = CLASSIFICATION,
+        num.threads = 1,
+        seed = seed
+      )
       
-      ## run Feature Selection
-      
-      # via fastshap
+      # full shapleyforest
       if (shap_model == "full"){
-        # classification case
-        if (CLASSIFICATION == TRUE){
-          num_classes <- nlevels(y)
-          if (num_classes == 2){
-            prediction <- function(object, newdata) {
-              prob <- predict(object, newdata = newdata, type = "prob")
-              return(prob[,2])
+        # sets ups prediction function for fastshap
+        predict_function <- if (CLASSIFICATION) {
+          if (num_classes == 2) {
+            function(object, newdata) {
+              preds <- predict(object, data = newdata)$predictions
+              return(preds[, 1])  # ranger returns a matrix with one column: prob of class 1
             }
-          }
-          else if (num_classes > 2) {
-            prediction <- function(object, newdata) {
-              prob <- predict(object, newdata = newdata, type = "prob")
-              return(prob)
+          } else if (num_classes > 2) {
+            function(object, newdata) {
+              preds <- predict(object, data = newdata)$predictions
+              return(preds)  # returns matrix with class probabilities
             }
           } else {
-            options(warn = 1)
             stop("Invalid or single-class data in y")
           }
-          shap <- suppressMessages(
-            fastshap::explain(rf, 
-                              X = module, 
-                              nsim = nsim, 
-                              pred_wrapper = prediction)
-          )
+        } else {
+          function(object, newdata) {
+            preds <- predict(object, data = newdata)$predictions
+            return(preds)  # regression: numeric vector
+          }
         }
         
-        # regression case
-        if (CLASSIFICATION == FALSE){
-          shap <- suppressMessages(
-            fastshap::explain(rf, 
-                              X = module, 
-                              nsim = nsim, 
-                              pred_wrapper = predict)
-          )
-        }
+        # fastshap
+        shap <- suppressMessages(fastshap::explain(
+          object = rf,
+          X = module,
+          pred_wrapper = predict_function,
+          nsim = 1,
+          adjust = FALSE,
+          parallel = FALSE,
+          .packages = "ranger"
+        ))
+        
+        # gathers absolute shap values
         var_importance <- colMeans(abs(shap))
         var_importance <- sort(var_importance, decreasing = TRUE)
         var_importance <- data.frame(Feature = var_importance)
       }
       
-      # via permutation VIMs
+      # after shapleyforest
       if (shap_model == "after"){
-        var_importance <- importance(rf, type=1, scale=FALSE)
-        var_importance <- var_importance[order(var_importance[, 1],
-                                               decreasing=TRUE), ,drop=FALSE]
+        # stores permutation VIM
+        var_importance <- rf$variable.importance
+        var_importance <- sort(var_importance, decreasing = TRUE)
+        var_importance <- data.frame(Variable = names(var_importance),
+                                     Importance = as.vector(var_importance))
       }
       
       # sets reduction value for feature elimination
@@ -517,7 +534,7 @@ shapscreen_RF <- function(X, y, module_list, module_membership, screen_control,
     plan(multisession, workers = num_processors)
     
     # parallelizes RFE at each WGCNA module
-    results <- future_lapply(seq_along(module_list), function(i) {
+    survivor_results <- future_lapply(seq_along(module_list), function(i) {
       
       # gets specific WGCNA module
       module_name <- module_list[i]
@@ -563,7 +580,8 @@ shapscreen_RF <- function(X, y, module_list, module_membership, screen_control,
           min.node.size = nodesize_i,
           keep.inbag = TRUE,
           probability = CLASSIFICATION,
-          num.threads = 1
+          num.threads = 1,
+          seed = seed
         )
         
         # full shapleyforest
@@ -662,15 +680,7 @@ shapscreen_RF <- function(X, y, module_list, module_membership, screen_control,
     
     # parallelizing stops
     plan(sequential)
-    
-    assign("result", results, envir = .GlobalEnv)
-    
-    # combines all survivor lists from all modules
-    survivor_results <- lapply(results, `[[`, "survivor")
-    initial_screen <- do.call(rbind, lapply(results, `[[`, "screen_df"))
-    names(survivors) <- module_list
   }
-  
   return(list(
     survivor_results = survivor_results,
     initial_screen = initial_screen
@@ -679,7 +689,7 @@ shapscreen_RF <- function(X, y, module_list, module_membership, screen_control,
 
 shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, mtry_factor,
                           ntree_factor, min_ntree,
-                          num_processors, nodesize, cl, nsim) {
+                          num_processors, nodesize, cl, nsim, seed) {
   # initialize lists
   selection_list <- list()
   feature_list <- NULL
@@ -697,8 +707,6 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, 
   target <- number_selected
   current_X <- X
   
-  cat(num_features, target)
-  
   ## begins Recursive Feature Elimination
   i <- 1
   while (num_features >= target){ # runs until it hits target
@@ -712,7 +720,8 @@ shapselect_RF <- function(X, y, drop_fraction, number_selected, CLASSIFICATION, 
       min.node.size = nodesize,
       keep.inbag = TRUE,
       probability = CLASSIFICATION,
-      num.threads = 1
+      num.threads = 1,
+      seed = seed
     )
     ## calculates SHAP values
     # sets ups prediction function for fastshap
@@ -882,58 +891,67 @@ if (p == 1000) {
   beta_list <- rep(c(5, 5, 2), 2)
 }
 
-runtime <- system.time({
-  for (l in 1:sim_number) {
-    all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
-    all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
-    X <- do.call(cbind, all_modules)
-    beta <- rep(0, p_per_group * (number_of_mods + 1))
-    beta[vim_list] <- beta_list
-    y <- X %*% beta + rnorm(n, sd = 0.1)
-    X <- as.data.frame(X)
-    names(X) <- paste("V", 1:p, sep = "")
-    #mtry_factor <- 1
-    screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
-                                    mtry_factor = mtry_factor)
-    select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
-                                    mtry_factor = mtry_factor)
-    y <- as.numeric(y)
-    powers <- c(1:20)
-    sft <- pickSoftThreshold(X, powerVector = powers, verbose = 5)
-    softPower <- sft$powerEstimate
-    if (is.na(softPower)) softPower <- 3
-    net <- blockwiseModules(X,
-                            power = softPower,
-                            TOMType = "signed",
-                            reassignThreshold = 0,
-                            mergeCutHeight = 0.25,
-                            numericLabels = TRUE,
-                            pamRespectsDendro = FALSE,
-                            verbose = 3)
-    moduleLabels <- net$colors
-    module_membership <- factor(moduleLabels)
+registerDoSEQ()
+set.seed(2002)
+
+all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+X <- do.call(cbind, all_modules)
+beta <- rep(0, p_per_group * (number_of_mods + 1))
+beta[vim_list] <- beta_list
+y <- X %*% beta + rnorm(n, sd = 0.1)
+X <- as.data.frame(X)
+names(X) <- paste("V", 1:p, sep = "")
+#mtry_factor <- 1
+screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
+                                mtry_factor = mtry_factor)
+select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
+                                mtry_factor = mtry_factor)
+y <- as.numeric(y)
+powers <- c(1:20)
+sft <- pickSoftThreshold(X, powerVector = powers, verbose = 5)
+softPower <- sft$powerEstimate
+if (is.na(softPower)) softPower <- 3
+net <- blockwiseModules(X,
+                        power = softPower,
+                        TOMType = "signed",
+                        reassignThreshold = 0,
+                        mergeCutHeight = 0.25,
+                        numericLabels = TRUE,
+                        pamRespectsDendro = FALSE,
+                        verbose = 3)
+moduleLabels <- net$colors
+module_membership <- factor(moduleLabels)
+
+runtime <- numeric(sim_number) 
+
+for (l in 1:sim_number) {
+  temp_runtime <- system.time({
     ff <- shapff(X, y, module_membership = module_membership,
                  select_params = select_params,
                  shap_model = "full",
                  screen_params = screen_params,
-                 auto_initial = 2,
+                 auto_initial = 4,
                  nodesize = 1,
                  debug = 1,
-                 verbose = 2,
+                 verbose = 1,
                  initial = TRUE,
-                 num_processors = 8,
+                 num_processors = 1,
+                 min_features = 10,
                  seed = 2002)
-    shap_feature <- data.frame(index = ff$feature_list[1], 
-                               ff$feature_list[2], row.names = NULL)
-    vim <- shap_feature
-    sim_results[[l]] <- vim
-  }
-})
+  })
+  runtime[l] <- temp_runtime["elapsed"] 
+  shap_feature <- data.frame(index = ff$final_SHAP[1], 
+                             ff$final_SHAP[2], row.names = NULL)
+  vim <- shap_feature
+  sim_results[[l]] <- vim
+}
 
 summarize_sim <- function(sim_results, vim_interest) {
   num_interesting_feat <- length(vim_interest)
   vims <- matrix(0, nrow = num_interesting_feat, ncol = length(sim_results))
   selected <- matrix(0, nrow = num_interesting_feat, ncol = length(sim_results))
+  
   for (r in 1:num_interesting_feat) {
     current_feature <- paste("V", vim_interest[r], sep = "")
     for (t in 1:length(sim_results)) {
@@ -947,14 +965,23 @@ summarize_sim <- function(sim_results, vim_interest) {
       }
     }
   }
+  
   mean_vims <- apply(vims, 1, mean)
   selected_props <- apply(selected, 1, mean)
-  sim_out <- cbind(mean_vims, selected_props)
+  
+  sim_out <- data.frame(
+    feature = paste0("V", vim_interest),
+    mean_vim = mean_vims,
+    selected_prop = selected_props,
+    row.names = NULL
+  )
+  
   return(sim_out)
 }
 
 
-out <- list(summarize_sim(sim_results, vim_interest), vim_interest, current_sim_params, runtime = runtime)
+
+out <- list(summarize_sim(sim_results, vim_interest), vim_interest, current_sim_params, runtime = mean(runtime))
 
 dir.create("out", showWarnings = FALSE)
 out_filename <- paste("parallel/out", id, sep = "")
