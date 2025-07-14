@@ -730,8 +730,6 @@ shapley_forest <- function(final_rf, final_X, module_membership,
 }
 ```
 
-
-
 ## Test Simulations
 
 ### Generate Simulated Data

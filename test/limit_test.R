@@ -1,4 +1,22 @@
-sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
+## IF USE HOFFMAN (SKIP IF NOT)
+.libPaths("/u/home/t/tzshen/R")
+
+id <- as.integer(Sys.getenv("SGE_TASK_ID"))
+id <- id
+if (is.na(id)) id <- 1 # if run manually only do for id = 1
+##
+
+library(WGCNA)
+#library(randomForest)
+library(mvtnorm)
+library(fuzzyforest)
+library(ranger)
+library(future)
+library(future.apply)
+library(doFuture)
+library(tidyverse)
+
+shapff <- function(X, y, Z=NULL, shap_model = "full", module_membership,
                    min_features = 20, verbose = 1, debug = 2, 
                    initial = TRUE, auto_initial = NULL, 
                    screen_params = fuzzyforest:::screen_control(min_ntree=5000),
@@ -9,9 +27,10 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
                    final_nsim = 100, 
                    seed = set.seed(as.integer(Sys.time()))) {
   
-  ## set RNG seed
   options(doFuture.rng.onMisuse = "ignore")
   set.seed(seed)
+  
+  runtime <- list(Screen = NA, Selection = NA, Final_RF = NA)
   
   ## validating prerequisites
   if(!is.null(Z)) {
@@ -47,9 +66,6 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     parallel = FALSE
   }
   
-  # initialize runtime
-  runtime <- list(Screen = NA, Selection = NA, Final_RF = NA)
-  
   # sets parameters for each step
   screen_control <- screen_params
   select_control <- select_params
@@ -66,11 +82,10 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     select_control$number_selected <- max(floor(ncol(X)*keep_fraction), 1)
   }
   
-  # begin runtime for screening step
   start_time <- Sys.time()
   
   ## Screening Step
-  screen_result <- screen_RFE(
+  screen_result <- shapscreen_RF(
     X = X,
     y = y,
     module_list = module_list,
@@ -89,12 +104,14 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
     seed = seed
   )
   
-  # extract survivor results and initial screen
   survivor_results <- screen_result$survivor_results
+  
+  #print(survivor_results)
+  
   initial_screen <- screen_result$initial_screen
   
-  # end runtime for screening step
   end_time <- Sys.time()
+  
   runtime$Screen <- as.numeric(difftime(end_time, start_time, units = "secs"))
   
   ## Initial Screening Output Procedure
@@ -174,8 +191,10 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   ## Selection Step
   
-  # begin runtime for selection step
   start_time <- Sys.time()
+  
+  ## CHANGE LATER ##
+  #num_processors <- 1
   
   # sets up selection step parameters
   select_args <- list(X_surv, y, num_processors, nodesize)
@@ -184,7 +203,7 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   # RFE via fastshap
   if (shap_model == "full"){
-    select_results <- select_RFE(select_args$X, select_args$y, 
+    select_results <- shapselect_RF(select_args$X, select_args$y, 
                                     select_args$drop_fraction, shap_model,
                                     select_args$number_selected, CLASSIFICATION,
                                     select_args$mtry_factors,
@@ -195,7 +214,7 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   # RFE via permutation VIMs
   if (shap_model == "after"){
-    select_results <- select_RFE(select_args$X, select_args$y, 
+    select_results <- shapselect_RF(select_args$X, select_args$y, 
                                     select_args$drop_fraction, shap_model,
                                     select_args$number_selected, CLASSIFICATION,
                                     select_args$mtry_factors,
@@ -206,8 +225,8 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   
   cat("Done. \n")
   
-  # end runtime for selection step
   end_time <- Sys.time()
+  
   runtime$Selection <- as.numeric(difftime(end_time, start_time, units = "secs"))
   
   cat("Running Final Random Forest...")
@@ -252,7 +271,8 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
                                              names(final_X))]
   }
   
-  # begin runtime for final RF
+  #plan(sequential)
+  
   start_time <- Sys.time()
   
   # final Random Forest
@@ -340,8 +360,8 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   select_mods <- select_mods[match(select_order, select_X)]
   shap_final_list[, 3][shap_final_list[, 1] %in% names(final_X)] <- select_mods
   
-  # end runtime for final RF
   end_time <- Sys.time()
+  
   runtime$Final_RF <- as.numeric(difftime(end_time, start_time, units = "secs"))
   
   # output function
@@ -363,7 +383,7 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
   return(out)
 }
 
-screen_RFE <- function(X, y, module_list, module_membership, screen_control, 
+shapscreen_RF <- function(X, y, module_list, module_membership, screen_control, 
                           select_control, shap_model = "full", 
                           CLASSIFICATION, 
                           min_features, nsim, nodesize, 
@@ -371,9 +391,8 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
                           debug, parallel,
                           seed) {
   
-  # sets seeds for each module
   module_seeds <- seed + seq_along(module_list)
-  
+
   ## Screening Step
   survivors <- vector('list', length(module_list)) # initiates survivor list
   screen_df <- vector('list', length(module_list)) # initiates survivor list
@@ -408,7 +427,6 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
   if (!parallel){
     for (i in 1:length(module_list)) {
       
-      # set seed
       seed <- module_seeds[i]
       set.seed(seed)
       
@@ -477,6 +495,10 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
           seed = seed
         )
         
+        # if(module_name == 0) {
+        #   print(rf$variable.importance)
+        # }
+        
         # full shapleyforest
         if (shap_model == "full"){
           # sets ups prediction function for fastshap
@@ -525,7 +547,7 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
           var_importance <- rf$variable.importance
           var_importance <- sort(var_importance, decreasing = TRUE)
           var_importance <- data.frame(Feature = var_importance)
-        }
+          }
         
         # sets reduction value for feature elimination
         reduction <- ceiling(num_features*drop_fraction)
@@ -582,9 +604,9 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
           trimmed_features <- rownames(trimmed_varlist)
           survived <- feature_name %in% trimmed_features
           screen_df[[i]] <- data.frame("Module Color" = mod_name,
-                                       "Feature Name" = feature_name, 
-                                       "VIM" = var_importance[,1], 
-                                       "Survivor" = survived)
+                                           "Feature Name" = feature_name, 
+                                           "VIM" = var_importance[,1], 
+                                           "Survivor" = survived)
           is_initial = FALSE
         }
       }
@@ -600,6 +622,12 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
       )
     }
   } else {
+    # progress bar
+    # if (verbose !=0){
+    #   handlers(global = TRUE)
+    #   handlers("progress") 
+    # }
+    
     # starts parallelization
     registerDoFuture() 
     plan(multisession, workers = num_processors)
@@ -608,7 +636,7 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
     survivor_results <- future_lapply(seq_along(module_list), function(i) {
       seed <- module_seeds[i]
       set.seed(seed)
-      
+    
       # gets specific WGCNA module
       module_name <- module_list[i]
       module <- X[, which(module_membership == module_name), drop = FALSE]
@@ -619,7 +647,7 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
       mtry <- if (CLASSIFICATION) min(ceiling(mtry_factor * num_features / 3), num_features)
       else min(ceiling(mtry_factor * sqrt(num_features)), num_features)
       nodesize_i <- if (CLASSIFICATION) 1 else 5
-      
+
       # sets ntree for Random Forest
       ntree <- max(num_features * ntree_factor, min_ntree)
       
@@ -687,7 +715,7 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
               return(preds)  # regression: numeric vector
             }
           }
-          
+
           # fastshap
           shap <- suppressMessages(fastshap::explain(
             object = rf,
@@ -786,7 +814,7 @@ screen_RFE <- function(X, y, module_list, module_membership, screen_control,
   ))
 }
 
-select_RFE <- function(X, y, drop_fraction, shap_model = "full",
+shapselect_RF <- function(X, y, drop_fraction, shap_model = "full",
                           number_selected, CLASSIFICATION, mtry_factor,
                           ntree_factor, min_ntree,
                           num_processors, nodesize, nsim, seed) {
@@ -949,4 +977,181 @@ shapley_forest <- function(final_rf, final_X, module_membership,
   class(out) <- "shapley_forest"
   
   return(out)
+}
+
+set.seed(id)
+
+rep_num <- 100
+keep_frac <- c(0.01, 0.05, 0.1, 0.15, 0.25)
+drop_frac <- c(0.05, 0.1, 0.25, 0.5)
+mtry_factor <- c(0.5, 1, 2)
+p <- c(100, 1000)
+n <- c(100)
+
+param_list <- list(keep_frac, drop_frac, mtry_factor, p, n)
+param_settings <- expand.grid(param_list)
+param_settings <- param_settings[, 5:1]
+names(param_settings) <- c("n", "p", "mtry_factor", "drop_fraction", "keep_fraction")
+
+param_settings
+current_sim_params <- param_settings[ceiling((id)/rep_num), ]
+
+sim_number <- 1
+sim_results <- list()
+sim_results_1 <- list()
+sim_mod <- function(n, p, corr) {
+  sigma <- matrix(corr, nrow = p, ncol = p)
+  diag(sigma) <- 1
+  X <- rmvnorm(n, sigma = sigma)
+  return(X)
+}
+
+n <- as.numeric(current_sim_params[1])
+p <- as.numeric(current_sim_params[2])
+mtry_factor <- as.numeric(current_sim_params[3])
+keep_fraction <- as.numeric(current_sim_params[4])
+drop_fraction <- as.numeric(current_sim_params[5])
+corr <- 0.8
+if (p == 100) {
+  number_of_groups <- 4
+  number_of_mods <- number_of_groups - 1
+  p_per_group <- p/number_of_groups
+  vim_list <- c(1:3, 76:78)
+  vim_interest <- c(1:4, 76:79)
+  beta_list <- rep(c(5, 5, 2), 2)
+}
+if (p == 1000) {
+  number_of_groups <- 10
+  number_of_mods <- number_of_groups - 1
+  p_per_group <- p/number_of_groups
+  vim_list <- c(1:3, 901:903)
+  vim_interest <- c(1:4, 901:904)
+  beta_list <- rep(c(5, 5, 2), 2)
+}
+
+registerDoSEQ()
+set.seed(id)
+
+all_modules <- lapply(1:number_of_mods, function(j) sim_mod(n, p_per_group, corr))
+all_modules[[number_of_groups]] <- matrix(rnorm(p_per_group * n), nrow = n, ncol = p_per_group)
+X <- do.call(cbind, all_modules)
+beta <- rep(0, p_per_group * (number_of_mods + 1))
+beta[vim_list] <- beta_list
+y <- X %*% beta + rnorm(n, sd = 0.1)
+X <- as.data.frame(X)
+names(X) <- paste("V", 1:p, sep = "")
+#mtry_factor <- 1
+screen_params <- screen_control(drop_fraction = drop_fraction, keep_fraction = keep_fraction, 
+                                mtry_factor = mtry_factor)
+select_params <- select_control(number_selected = 10, drop_fraction = drop_fraction, 
+                                mtry_factor = mtry_factor)
+y <- as.numeric(y)
+powers <- c(1:20)
+sft <- pickSoftThreshold(X, powerVector = powers, verbose = 5)
+softPower <- sft$powerEstimate
+if (is.na(softPower)) softPower <- 3
+net <- blockwiseModules(X,
+                        power = softPower,
+                        TOMType = "signed",
+                        reassignThreshold = 0,
+                        mergeCutHeight = 0.25,
+                        numericLabels = TRUE,
+                        pamRespectsDendro = FALSE,
+                        verbose = 3)
+moduleLabels <- net$colors
+module_membership <- factor(moduleLabels)
+
+for (l in 1:sim_number) {
+  ff_full <- shapff(X, y, module_membership = module_membership,
+               select_params = select_params,
+               shap_model = "full",
+               screen_params = screen_params,
+               auto_initial = 4,
+               nodesize = 1,
+               debug = 1,
+               verbose = 1,
+               initial = TRUE,
+               num_processors = 1,
+               min_features = 10,
+               seed = id)
+  
+  ff_after <- shapff(X, y, module_membership = module_membership,
+                        select_params = select_params,
+                        shap_model = "after",
+                        screen_params = screen_params,
+                        auto_initial = 4,
+                        nodesize = 1,
+                        debug = 1,
+                        verbose = 1,
+                        initial = TRUE,
+                        num_processors = 1,
+                        min_features = 10,
+                        seed = id)
+  
+  y_classification <- ifelse(y > 0, 1, 0)
+  
+  ff_full_class <- shapff(X, y_classification, module_membership = module_membership,
+                        select_params = select_params,
+                        shap_model = "full",
+                        screen_params = screen_params,
+                        auto_initial = 4,
+                        nodesize = 1,
+                        debug = 1,
+                        verbose = 1,
+                        initial = TRUE,
+                        num_processors = 1,
+                        min_features = 10,
+                        seed = id)
+  
+  ff_after_class <- shapff(X, y_classification, module_membership = module_membership,
+                          select_params = select_params,
+                          shap_model = "after",
+                          screen_params = screen_params,
+                          auto_initial = 4,
+                          nodesize = 1,
+                          debug = 1,
+                          verbose = 1,
+                          initial = TRUE,
+                          num_processors = 1,
+                          min_features = 10,
+                          seed = id)
+  
+  ff_par_full <- shapff(X, y, module_membership = module_membership,
+                    select_params = select_params,
+                    shap_model = "full",
+                    screen_params = screen_params,
+                    auto_initial = 4,
+                    nodesize = 1,
+                    debug = 1,
+                    verbose = 1,
+                    initial = TRUE,
+                    num_processors = 8,
+                    min_features = 10,
+                    seed = id)
+  
+  ff_par_full_class <- shapff(X, y_classification, module_membership = module_membership,
+                        select_params = select_params,
+                        shap_model = "full",
+                        screen_params = screen_params,
+                        auto_initial = 4,
+                        nodesize = 1,
+                        debug = 1,
+                        verbose = 1,
+                        initial = TRUE,
+                        num_processors = 8,
+                        min_features = 10,
+                        seed = id)
+  
+  ff_par_after_class <- shapff(X, y, module_membership = module_membership,
+                              select_params = select_params,
+                              shap_model = "after",
+                              screen_params = screen_params,
+                              auto_initial = 4,
+                              nodesize = 1,
+                              debug = 1,
+                              verbose = 1,
+                              initial = TRUE,
+                              num_processors = 8,
+                              min_features = 10,
+                              seed = id)
 }
