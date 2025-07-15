@@ -1,6 +1,6 @@
 #' Shapley Forest loading Message
 .onAttach <- function(libname, pkgname) {
-  packageStartupMessage("Entering the shapley forest ... branching to the Beta Version--UNDER DEVELOPMENT")
+  packageStartupMessage("Entering the shapley forest ... branching to the Beta Version (06.15.25)--UNDER DEVELOPMENT")
 }
 
 #' SHAPley Forest Object
@@ -9,6 +9,7 @@
 #' 
 #' @export
 #' @param final_rf          The final random forest object output.
+#' @param final_X           The final surviving `X`.
 #' @param module_membership Module membership for each feature.
 #' @param WGCNA_object      WGCNA object output, if \code{shapwff} was called.
 #' @param survivor_list     Feature list of surviving features after screening step.
@@ -16,11 +17,13 @@
 #'                          of the selection step.
 #' @param final_shap        Feature list of final SHAP features.
 #' @param shap_obj          Final shapley forest object from the final surviving features
+#' @param runtime           Data frame of runtimes of screening step, selection step,
+#'                          and final random forest.
 #' @return An object of type `shapley_forest`.
 
 shapley_forest <- function(final_rf, final_X, module_membership,
-                              WGCNA_object=NULL, survivor_list, selection_list, 
-                              final_shap, shap_obj) {
+                           WGCNA_object=NULL, survivor_list, selection_list, 
+                           final_shap, shap_obj, runtime) {
   # define output list
   out <- list()
   
@@ -33,11 +36,12 @@ shapley_forest <- function(final_rf, final_X, module_membership,
   out[[6]] <- selection_list
   out[[7]] <- final_shap
   out[[8]] <- shap_obj
+  out[[9]] <- runtime
   
   # define column name for each output
   names(out) <- c("final_rf", "final_X", "module_membership",
                   "WGCNA_object", "survivor_list", "selection_list",
-                  "final_SHAP", "shap_obj")
+                  "final_SHAP", "shap_obj", "runtimes")
   
   # defines class of object type
   class(out) <- "shapley_forest"

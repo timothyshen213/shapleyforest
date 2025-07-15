@@ -1,19 +1,18 @@
 Package: shapleyforest
 Title: SHAPley Forest
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: 
     person("Timothy", "Shen", , "tzshen@g.ucla.edu", role = c("aut", "cre"))
 Description: An interpretable random-forest based feature selection algorithm for high-dimensional and correlated datasets.
 Imports:
     fuzzyforest (>= 1.0.0),
-    randomForest (>= 4.6-14),
+    ranger,
     fastshap (>= 0.1.0),
     shapviz (>= 0.9.4),
-    dplyr (>= 1.1.3),
-    purrr (>= 1.0.2),
-    ggplot2 (>= 3.4.3),
-    reshape2, 
-    treeshap
+    tidyverse,
+    future,
+    future.apply,
+    doFuture
 Enhances:
     fuzzyforest
 License: GPL (>= 3)

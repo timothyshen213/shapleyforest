@@ -5,14 +5,14 @@ id <- id
 if (is.na(id)) id <- 1 # if run manually only do for id = 1
 
 library(WGCNA)
-#library(randomForest)
-library(mvtnorm)
 library(fuzzyforest)
 library(ranger)
 library(future)
 library(future.apply)
 library(doFuture)
 library(tidyverse)
+
+library(mvtnorm)
 
 source(here("./test/test.R"))
 
