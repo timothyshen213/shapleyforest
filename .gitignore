@@ -3,3 +3,24 @@ inst/doc
 /doc/
 /Meta/
 .RData
+
+# macOS
+.DS_Store
+
+# RStudio
+.Rproj.user/
+*.Rproj
+
+# R session
+.Rhistory
+.RData
+.RDatatemp*
+
+# Build artifacts
+.Rcheck/
+*.tar.gz
+
+# renv (if used)
+renv/library/
+renv/python/
+
