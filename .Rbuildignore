@@ -3,3 +3,11 @@
 ^LICENSE\.md$
 ^doc$
 ^Meta$
+^\.Rproj$
+^\.Rhistory$
+^\.RData$
+^\.DS_Store$
+^\.github$
+^dev$
+^data-raw$
+^docs$
