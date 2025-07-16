@@ -2,8 +2,6 @@
 
 UNDER DEVELOPMENT R Package
 
-Note: Current Parallelizing does not work. Please set `num_processors` = 1.
-
 An interpretable Random-Forest based feature selection method through SHAPley values.
 
 ```
