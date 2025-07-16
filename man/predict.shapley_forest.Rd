@@ -23,6 +23,3 @@ Prediction function for shapley forest algorithm.
 Runs prediction through the final random forest
 after both screening and selection steps.
 }
-\examples{
-# see help(shapff) for example
-}

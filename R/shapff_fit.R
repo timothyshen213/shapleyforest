@@ -63,6 +63,8 @@
 #'                          it will call `fastshap` and `ranger` parallel 
 #'                          functions at the selection step. See their respective 
 #'                          documentation.
+#'                          NOTE: Setting `num_processors > 1` may cause runtimes
+#'                          to slow with small datasets (ie n,p < 100).
 #' @param nodesize          Minimum terminal nodesize. 1 if classification.
 #'                          5 if regression.  If the sample size is very large,
 #'                          the trees will be grown extremely deep.

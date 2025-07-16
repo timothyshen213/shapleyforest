@@ -12,15 +12,18 @@ shapley_forest(
   survivor_list,
   selection_list,
   final_shap,
-  shap_obj
+  shap_obj,
+  runtime
 )
 }
 \arguments{
 \item{final_rf}{The final random forest object output.}
 
+\item{final_X}{The final surviving \code{X}.}
+
 \item{module_membership}{Module membership for each feature.}
 
-\item{WGCNA_object}{WGCNA object output, if \code{shapwff} was called.}
+\item{WGCNA_object}{WGCNA object output, if \code{wsf} was called.}
 
 \item{survivor_list}{Feature list of surviving features after screening step.}
 
@@ -30,6 +33,9 @@ of the selection step.}
 \item{final_shap}{Feature list of final SHAP features.}
 
 \item{shap_obj}{Final shapley forest object from the final surviving features}
+
+\item{runtime}{Data frame of runtimes of screening step, selection step,
+and final random forest.}
 }
 \value{
 An object of type \code{shapley_forest}.

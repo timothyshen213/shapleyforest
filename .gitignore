@@ -4,6 +4,9 @@ inst/doc
 /Meta/
 .RData
 
+# git
+.gitattributes
+
 # macOS
 .DS_Store
 

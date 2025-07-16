@@ -11,7 +11,7 @@
 #' @param final_rf          The final random forest object output.
 #' @param final_X           The final surviving `X`.
 #' @param module_membership Module membership for each feature.
-#' @param WGCNA_object      WGCNA object output, if \code{shapwff} was called.
+#' @param WGCNA_object      WGCNA object output, if \code{wsf} was called.
 #' @param survivor_list     Feature list of surviving features after screening step.
 #' @param selection_list    Feature list of surviving features at each iteration
 #'                          of the selection step.
@@ -89,7 +89,7 @@ print.shapley_forest <- function(x, ...) {
 #' @return A vector of predictions through random forest.
 #' 
 #' @examples
-#' # see help(shapff) for example
+#' 
 
 predict.shapley_forest <- function(object, new_data, ...) {
   # obtains prediction through final_rf model
