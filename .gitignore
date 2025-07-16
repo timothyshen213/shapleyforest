@@ -20,7 +20,7 @@ inst/doc
 .Rcheck/
 *.tar.gz
 
-# renv (if used)
+# renv
 renv/library/
 renv/python/
 
