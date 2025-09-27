@@ -30,20 +30,20 @@
 #' 
 #' @export
 plot_importance <- function(object, ...) {
-    UseMethod("plot_importance")
+  UseMethod("plot_importance")
 }
 
 #' @describeIn plot_importance
 #'   Importance plot for an object of class `shapley_forest` through `shapviz`.
 #' @export
 plot_importance.shapley_forest <- function(object, kind = "beeswarm", 
-                                              color_bar_title = "Feature Value",
-                                              max_display = NULL, fill = "#3e568a",
-                                              sort_features = TRUE,
-                                              show_numbers = TRUE, 
-                                              viridis_args = list(begin = 0.25, 
-                                                                  end = 0.75, 
-                                                                  option = "viridis"), ...){
+                                           color_bar_title = "Feature Value",
+                                           max_display = NULL, fill = "#3e568a",
+                                           sort_features = TRUE,
+                                           show_numbers = TRUE, 
+                                           viridis_args = list(begin = 0.25, 
+                                                               end = 0.75, 
+                                                               option = "viridis"), ...){
   # stores fastshap object
   shap <- object$shap_obj
   shap_object <- shapviz(shap, X = object$final_X)
@@ -83,18 +83,18 @@ plot_importance.shapley_forest <- function(object, kind = "beeswarm",
   if (!is.logical(show_numbers)){
     stop("show_numbers must be boolean")
   }
-    
+  
   
   # calls shapviz for importance plot
   importance_plot <- sv_importance(shap_object, kind = kind, color_bar_title = color_bar_title,
                                    max_display = max_display, sort_features = sort_features,
                                    fill = fill, viridis_args = viridis_args)
   
-    
+  
   # titles and adjusts importance plot
   importance_plot <- importance_plot + 
-      ggtitle("Feature Importance Plot") +
-      theme(plot.title = element_text(size = 14, hjust = 0.5))
+    ggtitle("Feature Importance Plot") +
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
   
   print(importance_plot)
   
@@ -142,10 +142,10 @@ plot_waterfall <- function(object, ...) {
 #' @export
 
 plot_waterfall.shapley_forest <- function(object, row_id, row_name=NULL, max_display=NULL,
-                                             order_fun = function(s) order(abs(s)),
-                                             fill_colors = c("#59c46b","#3b528b"),
-                                             contrast = TRUE, show_connection = TRUE,
-                                             show_annotation = TRUE,...){
+                                          order_fun = function(s) order(abs(s)),
+                                          fill_colors = c("#59c46b","#3b528b"),
+                                          contrast = TRUE, show_connection = TRUE,
+                                          show_annotation = TRUE,...){
   
   # stores fastshap object
   shap <- object$shap_obj
@@ -259,14 +259,14 @@ plot_force <- function(object, ...) {
 #' @export
 
 plot_force.shapley_forest <- function(object, row_id, row_name=NULL, max_display=NULL,
-                                         fill_colors = c("#59c46b","#3b528b"),
-                                         contrast = TRUE, bar_label_size = 3.2,
-                                         show_annotation = TRUE,...){
+                                      fill_colors = c("#59c46b","#3b528b"),
+                                      contrast = TRUE, bar_label_size = 3.2,
+                                      show_annotation = TRUE,...){
   
   # stores fastshap object
   shap <- object$shap_obj
   shap_object <- shapviz(shap, X = object$final_X)
-
+  
   ## validating prerequisites
   is_valid_color <- function(q) {
     hex_pattern <- "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
@@ -375,7 +375,7 @@ plot_potential_interactions.shapley_forest <- function(object,...){
     labs(x = "FeatureA", y = "FeatureB", title = "Potential Interactions")
   
 }
-  
+
 #' Plot Decision Plot from shapley forest.
 #'
 #' Creates a decision plot from a `shapley_forest` object. Plot is adapted from
@@ -413,7 +413,7 @@ plot_decisions.shapley_forest <- function(object, highlight = NULL,
                                           plot_title = "Decision Plot", 
                                           geom_point = FALSE, 
                                           gradient = c("blue", "red"), ...){
-
+  
   
   # store fastshap object
   if (just_shap == FALSE){
@@ -565,7 +565,7 @@ plot_modules <- function(object,...){
 #'   Module plot for an object of class `shapley_forest` adapted from \code{fuzzyforest}.
 #' @export
 plot_modules.shapley_forest <- function(object, main=NULL, xlab=NULL, ylab=NULL,
-                    module_labels=NULL, ...) {
+                                        module_labels=NULL, ...) {
   # Generates default labels, if applicable
   if(is.null(main)) {
     main <- "Module Membership Distribution"
@@ -648,7 +648,7 @@ plot_modules.shapley_forest <- function(object, main=NULL, xlab=NULL, ylab=NULL,
   Module <- NULL
   Percentage <- NULL
   Status <- NULL
-
+  
   # plots importance plot
   imp_plot <- ggplot(importance_pct, aes(x=Module, y=Percentage, fill=Status)) +
     geom_bar(stat="identity") +
@@ -658,5 +658,138 @@ plot_modules.shapley_forest <- function(object, main=NULL, xlab=NULL, ylab=NULL,
   
   plot(imp_plot)
 }
+
+#' Plot Elbow Plot from shapley forest
+#'
+#' Generates a elbow plot of Absolute SHAP values of the final SHAP values.
+#' 
+#' 
+#' @export
+#' @param object          A `shapley_forest` object.
+#' @param main            Main title for module plot. Default is `NULL` and will title
+#'                        "Elbow Plot of Absolute SHAP values"
+#' @param xlab            Title for x-axis. Default is `NULL` and will be titled "Features".
+#' @param ylab            Title for y-axis. Default is `NULL` and will be titled
+#'                        "Absolute SHAP Values"
+#' @param colorName       Title for module membership name. Only will display if `color` == `TRUE`.
+#'                        Default is `NULL` and will be titled "Modules"
+#' @param color           Binary variable. Colors each SHAP value by the module color. 
+#'                        Default is `TRUE`.
+#' @param module_labels   Optional. A list of labels for the modules. Default is `NULL`.
+#' @param ... Obsolete additional arguments.
+#' 
+#' @return A ggplot object representing the module membership distribution colored by importance.
+#' 
+#' @export
+plot_elbow <- function(object,...){
+  UseMethod("plot_elbow")
+}
+#' @describeIn plot_elbow
+#'   Module plot for an object of class `shapley_forest` adapted from \code{fuzzyforest}.
+#' @export
+plot_elbow.shapley_forest <- function(object, main=NULL, xlab=NULL, ylab=NULL,
+                                      colorName = NULL, color = TRUE, 
+                                      module_labels = NULL, ...) {
+  # Generates default labels, if applicable
+  if(is.null(main)) {
+    main <- "Elbow Plot of Absolute SHAP Values"
+  }
+  if(is.null(xlab)) {
+    xlab <- "Features"
+  }
+  if(is.null(ylab)) {
+    ylab <- "Absolute SHAP Values"
+  }
+  if(is.null(colorName)) {
+    colorName <- "Module"
+  }
+  
+  # replaces module names with user defined module_labels
+  if(!is.null(module_labels)) {
+    old_labels <- object$module_membership$module #old labels
+    
+    # sorts and factorizes new labels in alphabetical label to match old labels
+    module_labels <- module_labels[order(module_labels[, 1]), ] 
+    new_labels <- as.character(factor(old_labels, labels=module_labels[, 2])) #
+    object$module_membership$module <- new_labels
+    
+    # adds new labels to module table
+    select_mods <- as.factor(object$feature_list$module_membership)
+    select_module_table <- module_labels[which(module_labels[, 1] %in%
+                                                 levels(select_mods)), ,drop=FALSE]
+    
+    # handles "." in levels
+    if( "." %in% levels(select_mods)) {
+      dot_index <- which(levels(select_mods) == ".")
+      levels(select_mods)[-dot_index] <- select_module_table[, 2]
+    }
+    else {
+      levels(select_mods) <- select_module_table[, 2]
+    }
+    object$final_SHAP$module_membership <- as.character(select_mods)
+  }
+  
+  plot_df <- object$final_SHAP
+  
+  # rank shap values
+  plot_df <- plot_df %>%
+    mutate(rank = row_number())
+  
+  if (color == TRUE){
+    # checks if module_membership is valid colors
+    is_color <- function(x) {
+      x %in% colors()
+    }
+    module_is_color <- all(is_color(plot_df$module_membership))
+    
+    # plot with exact colors if module is colored
+    if (module_is_color) {
+      p <- ggplot(plot_df, aes(x = rank, y = variable_importance, color = module_membership)) +
+        geom_point(size = 3) +
+        geom_line(aes(group = 1), color = "gray60") +
+        scale_x_continuous(breaks = plot_df$rank, labels = plot_df$feature_name) +
+        scale_color_identity(guide = "legend") +
+        theme_minimal(base_size = 14) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+        labs(
+          x = xlab,
+          y = ylab,
+          color = colorName,
+          title = main
+        )
+    } else {
+      p <- ggplot(plot_df, aes(x = rank, y = variable_importance, color = module_membership)) +
+        geom_point(size = 3) +
+        geom_line(aes(group = 1), color = "gray60") +
+        scale_x_continuous(breaks = plot_df$rank, labels = plot_df$feature_name) +
+        scale_color_discrete() +
+        theme_minimal(base_size = 14) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        labs(
+          x = xlab,
+          y = ylab,
+          color = colorName,
+          title = main
+        )
+    }
+  } else {
+    p <- ggplot(plot_df, aes(x = rank, y = variable_importance)) +
+      geom_point(size = 3) +
+      geom_line(aes(group = 1), color = "gray60") +
+      scale_x_continuous(breaks = plot_df$rank, labels = plot_df$feature_name) +
+      theme_minimal(base_size = 14) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+      labs(
+        x = xlab,
+        y = ylab,
+        title = main
+      )
+  }
+  
+  plot(p)
+}
+
+
+
 
 
