@@ -88,7 +88,6 @@ print.shapley_forest <- function(x, ...) {
 #' 
 #' @return A vector of predictions through random forest.
 #' 
-#' @examples
 #' 
 
 predict.shapley_forest <- function(object, new_data, ...) {

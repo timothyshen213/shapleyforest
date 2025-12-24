@@ -575,7 +575,6 @@ sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
 #' Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model 
 #' predictions. Advances in neural information processing systems, 30.
 #'
-#' @examples
 wsf <- function(X, y, Z=NULL, shap_model = "full",
                     WGCNA_params=WGCNA_control(p=6),
                     min_features=20, verbose = 1, debug = 2, 
