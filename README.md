@@ -8,7 +8,7 @@ An interpretable Random-Forest based feature selection method through SHAPley va
 if (!require("devtools", quietly = TRUE))
        install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyshen213/shapleyforest")
+devtools::install_github("timothyzshen/shapleyforest")
 ```
 
 ### A note on downloading `WGCNA`:
