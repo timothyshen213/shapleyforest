@@ -6,6 +6,20 @@
 \usage{
 WGCNA_control(power = 6, min_features = 20, ...)
 }
+\arguments{
+\item{power}{Soft-thresholding power passed to
+\code{\link[WGCNA]{blockwiseModules}}. Default \code{6}.}
+
+\item{min_features}{Minimum number of features per module. Modules smaller
+than this trigger a warning. Default \code{20}.}
+
+\item{...}{Additional arguments forwarded to
+\code{\link[WGCNA]{blockwiseModules}}.}
+}
+\value{
+An object of class \code{WGCNA_control}.
+}
 \description{
-TO DO
+Creates a parameter object for the WGCNA co-expression network step used
+by \code{\link{wsf}}.
 }

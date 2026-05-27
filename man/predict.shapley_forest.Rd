@@ -2,24 +2,22 @@
 % Please edit documentation in R/shapff_object.R
 \name{predict.shapley_forest}
 \alias{predict.shapley_forest}
-\title{Prediction for shapley forest}
+\title{Predict from a Shapley Forest Object}
 \usage{
 \method{predict}{shapley_forest}(object, new_data, ...)
 }
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{new_data}{A matrix or data.frame containing new data.
-Note: Feature names must match between
-training set and test set data.frame.}
+\item{new_data}{A matrix or data frame of new observations. Column names
+must match the training features.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Additional arguments passed to \code{ranger:::predict}.}
 }
 \value{
-A vector of predictions through random forest.
+A \code{ranger} prediction object.
 }
 \description{
-Prediction function for shapley forest algorithm.
-Runs prediction through the final random forest
-after both screening and selection steps.
+Generates predictions from the final random forest fitted on the stable
+feature set.
 }

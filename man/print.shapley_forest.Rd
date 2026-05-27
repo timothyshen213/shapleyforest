@@ -2,18 +2,19 @@
 % Please edit documentation in R/shapff_object.R
 \name{print.shapley_forest}
 \alias{print.shapley_forest}
-\title{Prints a summarized output of shapley forest.}
+\title{Print a Shapley Forest Object}
 \usage{
 \method{print}{shapley_forest}(x, ...)
 }
 \arguments{
-\item{x}{\code{shapley_forest} object}
+\item{x}{A \code{shapley_forest} object.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 }
 \value{
-data.frame with list of final selected features and its SHAP values.
+Invisibly returns \code{x}.
 }
 \description{
-Prints a summarized output of shapley forest.
+Prints the stable feature set with mean |SHAP| importance scores and
+shadow-stability frequencies.
 }

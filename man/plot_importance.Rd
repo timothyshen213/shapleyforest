@@ -3,7 +3,7 @@
 \name{plot_importance}
 \alias{plot_importance}
 \alias{plot_importance.shapley_forest}
-\title{Plot Feature Importance for shapley forest}
+\title{Plot Feature Importance for a Shapley Forest Object}
 \usage{
 plot_importance(object, ...)
 
@@ -22,40 +22,39 @@ plot_importance(object, ...)
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 
-\item{kind}{The type of plot to generate. Options are "bar", "beeswarm",
-or "both". Default is "beeswarm".}
+\item{kind}{Plot type: \code{"bar"}, \code{"beeswarm"}, or
+\code{"both"}. Default \code{"beeswarm"}.}
 
-\item{color_bar_title}{Title for the color bar in the beeswarm plot. Default is "Feature Value".
-Leave as is if \code{kind} = "bar".}
+\item{color_bar_title}{Title for the colour bar in the beeswarm plot.
+Default \code{"Feature Value"}.}
 
-\item{max_display}{The maximum number of features to display.
-If set to \code{NULL} it is defaulted to maximum possible.
-Default is \code{NULL}.}
+\item{max_display}{Maximum number of features to display. \code{NULL}
+shows all. Default \code{NULL}.}
 
-\item{fill}{The color to fill bars in the bar plot or color points in the beeswarm plot.
-Must be a valid \code{\link[ggplot2]{ggplot2}} color or hex code.
-Default is "#3e568a".}
+\item{fill}{Bar/point colour. Any valid \code{ggplot2} colour or
+hex code. Default \code{"#3e568a"}.}
 
-\item{sort_features}{Whether to sort features by importance. Default is \code{TRUE}.}
+\item{sort_features}{Sort features by importance? Default \code{TRUE}.}
 
-\item{show_numbers}{Whether to show numeric SHAP values on the bar plot. Default is \code{TRUE}.}
+\item{show_numbers}{Show numeric SHAP values on the bar plot?
+Default \code{TRUE}.}
 
-\item{viridis_args}{Additional arguments passed to \code{viridis} for customizing the color scale
-in the beeswarm plot.
-Default is \code{list(begin = 0.25, end = 0.75, option = "viridis")}.}
+\item{viridis_args}{Named list of arguments forwarded to \code{viridis}
+for the beeswarm colour scale. Default
+\code{list(begin = 0.25, end = 0.75, option = "viridis")}.}
 }
 \value{
-A \code{\link[ggplot2]{ggplot2}} object representing the feature importance plot.
+A \code{ggplot2} object (invisibly).
 }
 \description{
-Generates a feature importance plot from \code{shapley_forest} object. Three types
-of plots can be generated: bar, beeswarm, and both plots. Plots are created
-from \link[shapviz]{shapviz}.
+Generates a feature importance plot from a \code{shapley_forest} object.
+Three plot types are available: bar, beeswarm, and both. Plots are built
+via \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_importance(shapley_forest)}: Importance plot for an object of class \code{shapley_forest} through \code{shapviz}.
+\item \code{plot_importance(shapley_forest)}: Importance plot for a \code{shapley_forest} object.
 
 }}

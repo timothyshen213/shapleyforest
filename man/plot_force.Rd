@@ -3,7 +3,7 @@
 \name{plot_force}
 \alias{plot_force}
 \alias{plot_force.shapley_forest}
-\title{Plot SHAP Force Plot for Specific Observations in shapley forest}
+\title{Plot SHAP Force Plot for Specific Observations in a Shapley Forest Object}
 \usage{
 plot_force(object, ...)
 
@@ -22,39 +22,33 @@ plot_force(object, ...)
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 
-\item{row_id}{The row index (or indices) corresponding to the observation(s) to
-be generated on the waterfall plot. Can be character or list.
-If list, selected observations are averaged.}
+\item{row_id}{Row index (or indices) for the observation(s) to plot.}
 
-\item{row_name}{Optional. A name or vector of names for the observations.
-If not provided, the \code{row_id} will be used.}
+\item{row_name}{Optional name(s) for the observation(s).}
 
-\item{max_display}{The maximum number of features to display in the plot.
-If set to \code{NULL} it is defaulted to maximum possible.
-Default is \code{NULL}.}
+\item{max_display}{Maximum number of features to display. \code{NULL}
+shows all. Default \code{NULL}.}
 
-\item{fill_colors}{A vector of colors to fill the bars in the force plot.
-Each color must be a valid ggplot color or hex code. Default is
-\code{c("#59c46b","#3b528b")}.}
+\item{fill_colors}{Length-2 vector of colours. Default
+\code{c("#59c46b", "#3b528b")}.}
 
-\item{contrast}{Whether to apply contrast between text and arrow. Default is \code{TRUE}.}
+\item{contrast}{Apply text/arrow contrast? Default \code{TRUE}.}
 
-\item{bar_label_size}{The size of the labels on the bars. Default is \code{3.2}.}
+\item{bar_label_size}{Label size on bars. Default \code{3.2}.}
 
-\item{show_annotation}{Whether to show annotations for each bar in the waterfall plot.
-Default is \code{TRUE}.}
+\item{show_annotation}{Annotate bars? Default \code{TRUE}.}
 }
 \value{
-A ggplot2 object representing the SHAP force plot.
+A \code{ggplot2} object (invisibly).
 }
 \description{
-Generates a force plot for specific observations in a \code{shapley_forest} object.
-Plots are created from \link[shapviz]{shapviz}.
+Generates a SHAP force plot for one or more observations. Plots are built
+via \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_force(shapley_forest)}: Force plot for an object of class \code{shapley_forest} through \code{shapviz}.
+\item \code{plot_force(shapley_forest)}: Force plot for a \code{shapley_forest} object.
 
 }}

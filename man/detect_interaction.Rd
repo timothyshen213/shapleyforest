@@ -2,28 +2,48 @@
 % Please edit documentation in R/detect_interaction.R
 \name{detect_interaction}
 \alias{detect_interaction}
-\title{Potential interaction variables for \code{shapley_forest} object}
+\title{Detect Pairwise Interactions from a Shapley Forest Object}
 \usage{
-detect_interaction(object, thresh, all = FALSE, verbose = TRUE)
+detect_interaction(object, thresh = 0, all = FALSE, verbose = TRUE, ...)
 }
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{thresh}{Threshold for interaction strength. Threshold should
-be between \code{0} and \code{1} where the higher values
-indicates strong interaction effects.}
+\item{thresh}{Interaction-strength threshold.  Only pairs whose mean
+\eqn{|\phi_{jk}|} exceeds \code{thresh} are returned as
+significant.  Set to \code{0} to return all pairs.}
 
-\item{all}{Returns all interaction. strength values
-Default is \code{FALSE}.}
+\item{all}{If \code{TRUE}, return every off-diagonal pair (upper
+triangle) regardless of \code{thresh}.  Default \code{FALSE}.}
 
-\item{verbose}{Hide potential interaction printout. Defaul is \code{FALSE}}
+\item{verbose}{If \code{TRUE}, print the significant-pair table (or a
+message if none are found). Default \code{TRUE}.}
 
-\item{...}{Obsolete additional arguements.}
+\item{...}{Ignored.}
 }
 \value{
-A data.frame of potential pairwise interactions
+A data frame with columns \code{FeatureA}, \code{FeatureB}, and
+\code{Interaction_Strength} (mean absolute TreeSHAP interaction), sorted
+by interaction strength descending.  Invisibly when \code{all = TRUE}.
 }
 \description{
-Calculates potential interaction variables from the \code{shapley_forest}
-object for a given threshold
+Returns exact TreeSHAP pairwise interaction strengths for all stable
+features.  Interaction values are computed via
+\code{TreeExplainer.shap_interaction_values()} during model fitting and
+stored in the object — no re-computation is needed here.
+}
+\details{
+The \eqn{p \times p} \strong{interaction matrix} stored in
+\code{object$shap_obj$interaction_matrix} is defined as:
+\deqn{M_{jk} = \frac{1}{n}\sum_{i=1}^{n}|\phi_{jk}(x_i)|}
+where \eqn{\phi_{jk}(x_i)} is the TreeSHAP interaction value for the pair
+\eqn{(j, k)} at observation \eqn{i} (Lundberg et al., 2018).  Diagonal
+entries are main effects; off-diagonal entries are pairwise interactions.
+The matrix is symmetric: \eqn{M_{jk} = M_{kj}}.
+}
+\references{
+Lundberg, S. M., Erion, G., Chen, H., DeGrave, A., Prutkin, J. M.,
+Nair, B., Katz, R., Himmelfarb, J., Bansal, N., & Lee, S.-I. (2020).
+From local explanations to global understanding with explainable AI for
+trees. \emph{Nature Machine Intelligence}, 2, 56–67.
 }

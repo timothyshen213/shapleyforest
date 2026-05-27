@@ -3,7 +3,7 @@
 \name{plot_decisions}
 \alias{plot_decisions}
 \alias{plot_decisions.shapley_forest}
-\title{Plot Decision Plot from shapley forest.}
+\title{Plot Decision Plot for a Shapley Forest Object}
 \usage{
 plot_decisions(object, ...)
 
@@ -18,37 +18,33 @@ plot_decisions(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object. If \code{just_shap} is \code{TRUE}, a
-\code{data.frame} of shapley values is expected instead.}
+\item{object}{A \code{shapley_forest} object. If \code{just_shap = TRUE},
+pass a data frame of SHAP values instead.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 
-\item{highlight}{A list of final surviving features to display for
-decision plot. If \code{highlight} is \code{NULL}, all final
-surviving features will be used}
+\item{highlight}{Row indices or feature names to highlight. \code{NULL}
+shows all observations. Default \code{NULL}.}
 
-\item{just_shap}{If \code{just_shap} is \code{TRUE}, the \code{object} is expected to only
-contain a \code{data.frame} of shapley values--not a \code{shapley_forest}
-object.}
+\item{just_shap}{If \code{TRUE}, \code{object} is treated as a plain SHAP
+data frame. Default \code{FALSE}.}
 
-\item{plot_title}{Optional. A name for decision plot. Default is \verb{Decision Plot}.}
+\item{plot_title}{Plot title. Default \code{"Decision Plot"}.}
 
-\item{geom_point}{If \code{TRUE}, it will denote a point at each feature for each
-observation. Default is \code{FALSE}.}
+\item{geom_point}{Add a point at each feature step? Default \code{FALSE}.}
 
-\item{gradient}{A vector denoting the starting color and ending color for
-the gradient of the predicted outputs. Defaults is \code{blue}to
-\code{red}.}
+\item{gradient}{Length-2 colour vector for the prediction gradient.
+Default \code{c("blue", "red")}.}
 }
 \value{
-A ggplot2 object representing the decision plot.
+A \code{ggplot2} object (invisibly).
 }
 \description{
-Creates a decision plot from a \code{shapley_forest} object. Plot is adapted from
-Python's \code{shap} package.
+Creates a cumulative SHAP decision plot adapted from the Python \code{shap}
+package.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_decisions(shapley_forest)}: Decision plot for an object of class \code{shapley_forest} adapted from Python's \code{shap}.
+\item \code{plot_decisions(shapley_forest)}: Decision plot for a \code{shapley_forest} object.
 
 }}

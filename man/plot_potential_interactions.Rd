@@ -3,7 +3,7 @@
 \name{plot_potential_interactions}
 \alias{plot_potential_interactions}
 \alias{plot_potential_interactions.shapley_forest}
-\title{Obtains Potential Interaction Matrix in shapley forest.}
+\title{Plot Potential Interaction Matrix for a Shapley Forest Object}
 \usage{
 plot_potential_interactions(object, ...)
 
@@ -12,18 +12,18 @@ plot_potential_interactions(object, ...)
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 }
 \value{
-A ggplot2 object representing the SHAP potential interaction matrix.
+A \code{ggplot2} object (invisibly).
 }
 \description{
-Generates a potential interaction strength matrix of all features.
-Interactions is calculated from \code{shapviz}'s
-\link[shapviz]{potential_interactions}.
+Generates a heatmap of pairwise SHAP-based potential interaction strengths
+for all stable features.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_potential_interactions(shapley_forest)}: Potential Interaction Matrix of class \code{shapley_forest} through \code{shapviz}.
+\item \code{plot_potential_interactions(shapley_forest)}: Interaction heatmap for a
+\code{shapley_forest} object (uses exact TreeSHAP interaction values).
 
 }}

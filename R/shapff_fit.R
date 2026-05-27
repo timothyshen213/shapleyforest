@@ -1,719 +1,548 @@
-#' Runs shapley forest algorithm
+#' Shapley Forest Feature Selection
 #'
-#' Runs shapley forest algorithm for feature importance through
-#' the use of SHAPley values.
-#' 
+#' Runs the Shapley Forest algorithm: module-stratified recursive feature
+#' elimination (screening), followed by shadow-stability selection, and a
+#' single-shot SHAP importance pass on the stable feature set.
+#'
 #' @export
-#' @param X                 A data.frame. where each column represents a
-#'                          feature vector.
-#' @param y                 Response vector. If performing classification, `y` should 
-#'                          be a factor. If performing regression, `y`
-#'                          should be numeric vector.
-#' @param Z                 A data.frame of additional features that will bypass
-#'                          the screening step.
-#' @param shap_model        Binary indicator for \code{sf} model. If `full`, \code{sf}
-#'                          runs SHAPley values at both screening and selection step.
-#'                          If `after`, \code{sf} model runs SHAPley values at the end
-#'                          of final model and keeps permutation VIMs usage at other steps.
-#'                          `full` is default.
-#' @param module_membership A vector that specifies the module membership for each
-#'                          each feature. See \code{wsf} for possible method.
-#' @param min_features      Defines minimum feature allowed for each module. If `debug` is 
-#'                          not `-1`, modules below `min_features` will only keep non-zero
-#'                          important features during each Recursive Feature Elimination
-#'                          iteration
-#' @param verbose           Defines the warning message protocol. If `0`, no warning or UI
-#'                          will be displayed. If `1`, warnings and UI progress bar will
-#'                          be displayed.
-#' @param debug             Sets the debugging procedures. If `-1`, all debugging functions
-#'                          will be bypassed. If `0`, debugging at the WGCNA will be bypassed.
-#'                          Note for \code{sf}, `0` has no effect. If `1`, debugging during
-#'                          Recursive Feature Elimination at both screening and selection step 
-#'                          will be bypassed. If `2`, all debugging functions will be ran. Below
-#'                          are the debugging features. Debugging at WGCNA detects if each module
-#'                          is below the \code{min_features}. Debugging at RFE will keep only 
-#'                          non zero important feature at each elimination step for modules below
-#'                          \code{min_features}.
-#' @param initial           Binary indicator to print out initial screening step results (ie the
-#'                          results from the first Recursive Feature Elimination at the screening
-#'                          step for each module). If `True`, \code{sf} will pause after RFE
-#'                          allowing users to select output method for initial screening. If `False`,
-#'                          it will bypass all initial screening procedure.
-#' @param auto_initial      Bypass readline prompt for \code{initial}. If `1`, `initial_screening.csv`
-#'                          will be saved in directory and stops. If `2`, `initial_screening.csv`
-#'                          will be saved in directory and proceeds. If `3`, nothing saved and stops.
-#'                          If `4`, nothing saved and proceeds. Default is `NULL`. Note if \code{initial},
-#'                          is set to `TRUE`, `auto_initial` will automically be set to `NULL`.
-#' @param screen_params     Defines the parameter settings for the screening step
-#'                          of \link[fuzzyforest]{fuzzyforest}.
-#'                          See \code{\link[fuzzyforest]{screen_control}} for
-#'                          details. \code{screen_params} is an object of type
-#'                          \code{screen_control}.
-#' @param select_params     Defines the parameter setting for the selection step
-#'                          of \link[fuzzyforest]{fuzzyforest}.
-#'                          See \code{\link[fuzzyforest]{select_control}} for details.
-#'                          \code{select_params} is an object of type
-#'                          \code{select_control}.
-#' @param final_ntree       The number of trees grown in the final random forest in
-#'                          the selection step. This random forest contains all
-#'                          the surviving features.
-#' @param num_processors    Number of processors used to run shapley forests. If 
-#'                          `num_processors` is greater than 1, shapley forest will
-#'                          parallelize at each module in the screening step. Furthermore,
-#'                          it will call `fastshap` and `ranger` parallel 
-#'                          functions at the selection step. See their respective 
-#'                          documentation.
-#'                          NOTE: Setting `num_processors > 1` may cause runtimes
-#'                          to slow with small datasets (ie n,p < 100).
-#' @param nodesize          Minimum terminal nodesize. 1 if classification.
-#'                          5 if regression.  If the sample size is very large,
-#'                          the trees will be grown extremely deep.
-#'                          This may lead to issues with memory usage and may
-#'                          lead to significant increases in the time it takes
-#'                          the algorithm to run. In this case,
-#'                          it may be useful to increase \code{nodesize}.
-#' @param test_features     A data.frame containing features from a test set.
-#'                          The data.frame should contain the features in both
-#'                          X and Z. Used during final Random Forest call (after
-#'                          screening and selection step).
-#' @param test_y            The responses for the test set. Used during final Random 
-#'                          Forest call (after screening and selection step).
-#' @param nsim              Number of Monte Carlo repetitions for estimating SHAP
-#'                          values in the screening step. Default is `1`. Increasing
-#'                          \code{nsim} leads to more accurate results, but at the cost
-#'                          of computational cost.
-#' @param final_nsim        Number of Monte Carlo repetitions for estimating SHAP
-#'                          values in the selection step. Default is `1`. \code{final_nsim}
-#'                          should be as large as feasibly possible.
-#' @param seed              RNG seed for reproducibility. Default is based on current
-#'                          system time (`as.integer(Sys.time()))`).
-#' @return Returns an object of type `shapley_forest`, which is a list containing the essential 
-#' output of shapley forests, including a data.frame of selected features and the random forest 
-#' model fitted using those features. See \code{shapley_forest} for more details.
-#' 
-#' @import fuzzyforest
-#' @import ranger
-#' @import fastshap
-#' 
-#' 
+#' @param X                 A data frame where each column is a feature.
+#' @param y                 Response vector (numeric for regression; factor for
+#'                          classification).
+#' @param module_membership A named character vector assigning each feature in
+#'                          \code{X} to a module. Names must match
+#'                          \code{colnames(X)}.
+#' @param screen_params     Screening parameters. See
+#'                          \code{\link{screen_control}}.
+#' @param select_params     Selection parameters. See
+#'                          \code{\link{select_control}}.
+#' @param final_ntree       Number of trees in the final random forest.
+#'                          Default \code{500}.
+#' @param nodesize          Minimum terminal node size. Defaults to \code{1}
+#'                          for classification and \code{5} for regression.
+#' @param num_processors    Number of parallel threads for random forests.
+#'                          Default \code{1}.
+#' @param max_modsize       Maximum module size before blockwise pre-reduction
+#'                          is applied (Python backend only). Default \code{5000}.
+#' @param auto_initial      Controls the initial screening output.
+#'                          \code{"1"} — save CSV and stop;
+#'                          \code{"2"} — save CSV and continue;
+#'                          \code{"3"} — stop without saving;
+#'                          \code{"4"} — continue without saving (default).
+#' @param verbose           Verbosity level. \code{0} = silent; \code{1} =
+#'                          progress messages; \code{2} = detailed output.
+#'                          Default \code{1}.
+#' @param seed              Integer random seed for reproducibility. Defaults to
+#'                          current system time.
+#' @param backend           Computation backend. \code{"python"} (default) uses
+#'                          a Python scikit-learn / SHAP engine via
+#'                          \pkg{reticulate} and provides exact TreeSHAP values
+#'                          plus an interaction matrix.  \code{"R"} uses a
+#'                          pure-R \pkg{ranger} implementation — no Python
+#'                          installation required. Choose the final importance
+#'                          method with \code{r_shap}.
+#' @param r_shap            Final SHAP / importance method used when
+#'                          \code{backend = "R"}. Ignored for the Python
+#'                          backend. One of:
+#'   \describe{
+#'     \item{\code{"permutation"}}{Ranger permutation variable importance
+#'       (default). No extra packages needed. Returns a scalar VIM per
+#'       feature; per-observation SHAP values and SHAP-based plots are
+#'       unavailable.}
+#'     \item{\code{"fastshap"}}{Approximate Shapley values via
+#'       \pkg{fastshap} (\code{nsim = 50} permutations). Requires the
+#'       \pkg{fastshap} package. No interaction matrix.}
+#'     \item{\code{"treeshap"}}{Exact TreeSHAP values via the R
+#'       \pkg{treeshap} package. Requires \pkg{treeshap}. Also computes a
+#'       \eqn{p \times p} interaction matrix, enabling
+#'       \code{detect_interaction()} and
+#'       \code{plot_potential_interactions()}.}
+#'   }
+#'
+#' @return An object of class \code{\link{shapley_forest}}.
+#'
 #' @references
-#' TO DO
-sf <- function(X, y, Z=NULL, shap_model = "full", module_membership,
-               min_features = 20, verbose = 1, debug = 2, 
-               initial = TRUE, auto_initial = NULL, 
-               screen_params = fuzzyforest:::screen_control(min_ntree=5000),
-               select_params = fuzzyforest:::select_control(min_ntree=5000),
-               final_ntree = 5000,
-               num_processors = 1, nodesize, 
-               test_features=NULL, test_y=NULL, nsim = 1, 
-               final_nsim = 100, 
-               seed = set.seed(as.integer(Sys.time()))) {
-  
-  ## set RNG seed
-  options(doFuture.rng.onMisuse = "ignore")
+#' Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C.,
+#'   Newey, W., & Robins, J. (2018). Double/debiased machine learning for
+#'   treatment and structural parameters. \emph{The Econometrics Journal},
+#'   21(1), C1–C68.
+#'
+#' Lundberg, S. M., & Lee, S. I. (2017). A unified model for interpreting
+#'   predictions. \emph{NeurIPS}, 30.
+#'
+#' @importFrom ranger ranger
+#' @import dplyr
+#'
+#' @examples
+#' \dontrun{
+#'   sf_setup(condaenv = "sfenv")
+#'
+#'   data(iris)
+#'   X   <- iris[, 1:4]
+#'   y   <- iris$Species
+#'   mem <- setNames(c("A","A","B","B"), colnames(X))
+#'
+#'   res <- sf(X, y, module_membership = mem,
+#'             screen_params = screen_control(min_ntree = 100),
+#'             select_params = select_control(n_boots = 25))
+#'   print(res)
+#'   plot_importance(res)
+#' }
+sf <- function(X, y,
+               module_membership,
+               screen_params   = screen_control(),
+               select_params   = select_control(),
+               final_ntree     = 500L,
+               nodesize        = NULL,
+               num_processors  = 1L,
+               max_modsize     = 5000L,
+               auto_initial    = "4",
+               verbose         = 1L,
+               seed            = as.integer(Sys.time()),
+               backend         = "python",
+               r_shap          = "permutation") {
+
+  backend <- match.arg(backend, c("python", "R"))
+  r_shap  <- match.arg(r_shap,  c("permutation", "fastshap", "treeshap"))
+
+  # ── lazy-load Python backend ─────────────────────────────────────────────────
+  if (backend == "python") .ensure_python()
+
   set.seed(seed)
-  
-  ## validating prerequisites
-  if(!is.null(Z)) {
-    if (!is.data.frame(Z)) {
-      stop("Z must be a data.frame.",
-           call. = FALSE)
-    }
-  }
-  if (!(is.vector(y) || is.factor(y))) {
-    stop("y must be vector or factor")
-  }
-  if(!is.data.frame(X)) {
+
+  # ── validation ───────────────────────────────────────────────────────────────
+  if (!is.data.frame(X))
     stop("X must be a data.frame.", call. = FALSE)
-  }
+  if (!(is.vector(y) || is.factor(y)))
+    stop("y must be a numeric vector (regression) or factor (classification).",
+         call. = FALSE)
+  if (is.null(names(module_membership)))
+    names(module_membership) <- colnames(X)[seq_along(module_membership)]
+
   CLASSIFICATION <- is.factor(y)
-  if(CLASSIFICATION == TRUE) {
-    if(missing(nodesize)){
-      nodesize <- 1
-    }
-    
+  if (is.null(nodesize))
+    nodesize <- if (CLASSIFICATION) 1L else 5L
+
+  if (verbose == 0L) options(warn = -1)
+
+  sc <- screen_params
+  sl <- select_params
+
+  module_membership_screen <- module_membership[names(module_membership) %in% colnames(X)]
+  module_list_screen       <- unique(module_membership_screen)
+
+  runtime <- list(Screen = NA_real_, Selection = NA_real_, Final_RF = NA_real_)
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # R backend — pure ranger, no Python required
+  # ══════════════════════════════════════════════════════════════════════════════
+  if (backend == "R") {
+    return(.sf_R_backend(
+      X = X, y = y,
+      module_membership        = module_membership,
+      module_membership_screen = module_membership_screen,
+      module_list_screen       = module_list_screen,
+      screen_params            = screen_params,
+      select_params            = select_params,
+      final_ntree              = final_ntree,
+      nodesize                 = nodesize,
+      num_processors           = num_processors,
+      auto_initial             = auto_initial,
+      verbose                  = verbose,
+      seed                     = seed,
+      CLASSIFICATION           = CLASSIFICATION,
+      runtime                  = runtime,
+      r_shap                   = r_shap
+    ))
   }
-  if(CLASSIFICATION == FALSE) {
-    if(missing(nodesize)){
-      nodesize <- 5
-    }
-  }
-  if (verbose == 0){
-    options(warn = -1)
-  }
-  if (num_processors > 1){
-    parallel = TRUE
-  } else {
-    parallel = FALSE
-  }
-  
-  # initialize runtime
-  runtime <- list(Screen = NA, Selection = NA, Final_RF = NA)
-  
-  # sets parameters for each step
-  screen_control <- screen_params
-  select_control <- select_params
-  
-  # obtains module membership (ie. from WGCNA)
-  module_list <- unique(module_membership)
-  
-  # adjusts keep_fraction if below minimum threshold
-  if(ncol(X)*screen_control$keep_fraction < select_control$number_selected){
-    if (verbose != 0){
-      warning(c("\n\n ncol(X)*keep_fraction < number_selected", "\n",
-                "number_selected will be set to floor(ncol(X)*keep_fraction)"))
-    }
-    select_control$number_selected <- max(floor(ncol(X)*keep_fraction), 1)
-  }
-  
-  # begin runtime for screening step
-  start_time <- Sys.time()
-  
-  ## Screening Step
-  screen_result <- screen_RFE(
-    X = X,
-    y = y,
-    module_list = module_list,
-    module_membership = module_membership,
-    screen_control = screen_control,
-    select_control = select_control,
-    shap_model = shap_model,
-    CLASSIFICATION = CLASSIFICATION,
-    min_features = min_features,
-    nsim = nsim,
-    nodesize = nodesize,
-    num_processors = num_processors,
-    verbose = verbose,
-    debug = debug,
-    parallel = parallel,
-    seed = seed
+
+  # ── prepare inputs for Python ────────────────────────────────────────────────
+  X_mat         <- as.matrix(X); mode(X_mat) <- "double"
+  y_py          <- if (CLASSIFICATION) as.integer(y) else as.numeric(y)
+  feature_names <- colnames(X)
+  module_assign <- as.character(module_membership_screen[feature_names])
+  module_list_r <- as.character(module_list_screen)
+
+  # ── Phase 1: Screening ───────────────────────────────────────────────────────
+  if (verbose >= 1L) cat("Screening ...\n")
+  t0 <- proc.time()
+
+  screen_py <- .sf_py$run_screen_rfe(
+    X_mat              = X_mat,
+    y                  = y_py,
+    feature_names      = feature_names,
+    module_assignments = module_assign,
+    module_list        = module_list_r,
+    drop_fraction      = sc$drop_fraction,
+    keep_fraction      = sc$keep_fraction,
+    mtry_factor        = sc$mtry_factor,
+    ntree_factor       = as.numeric(sc$ntree_factor),
+    min_ntree          = as.integer(sc$min_ntree),
+    nodesize           = as.integer(nodesize),
+    classification     = CLASSIFICATION,
+    seed               = as.integer(seed),
+    n_jobs             = as.integer(num_processors),
+    max_modsize        = as.integer(max_modsize),
+    verbose            = as.logical(verbose >= 2L)
   )
-  
-  # extract survivor results and initial screen
-  survivor_results <- screen_result$survivor_results
-  initial_screen <- screen_result$initial_screen
-  
-  # end runtime for screening step
-  end_time <- Sys.time()
-  runtime$Screen <- as.numeric(difftime(end_time, start_time, units = "secs"))
-  
-  ## Initial Screening Output Procedure
-  
-  if (!is.null(auto_initial)){
-    if (auto_initial %in% c("1", "2")) { # save output
-      write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
-      assign("initial_screen", initial_screen, envir = .GlobalEnv)
-      if (verbose != 0){
-        cat("\n\n Dataframe saved as 'initial_screen.csv'.\n")
-      }
-      if (auto_initial == "1"){ # stops running
-        options(warn = 1)
-        stop("\n\n Execution stopped as per user choice.\n")
-      }
-    } else { # skips all
-      if (auto_initial == "3"){
-        options(warn = 1)
-        stop("\n\n Execution stopped as per user choice.\n")
-      }
-    }
-    initial = FALSE
+
+  runtime$Screen <- (proc.time() - t0)["elapsed"]
+
+  # ── Reconstruct survivor_results from Python output ──────────────────────────
+  survivor_results <- vector("list", length(module_list_screen))
+  for (i in seq_along(module_list_screen)) {
+    mod_name <- as.character(module_list_screen[i])
+    feats    <- as.character(screen_py$survivor_features[[i]])
+    vims     <- as.numeric(screen_py$survivor_vims[[i]])
+    surv_df  <- data.frame(features    = feats,
+                            mod_varlist = vims,
+                            stringsAsFactors = FALSE)
+    mask <- (screen_py$initial_module == mod_name)
+    init_df <- if (any(mask)) {
+      data.frame(
+        "Module"   = screen_py$initial_module[mask],
+        "Feature"  = screen_py$initial_feat[mask],
+        "VIM"      = as.numeric(screen_py$initial_vim[mask]),
+        "Survivor" = as.logical(screen_py$initial_survivor[mask]),
+        stringsAsFactors = FALSE, check.names = FALSE
+      )
+    } else NULL
+    survivor_results[[i]] <- list(survivor = surv_df, screen_df = init_df)
   }
-  
-  if (initial == TRUE){
-    cat("\n\nDisplaying Initial Screen (First Step) Variable Importance ... ")
-    print(knitr::kable(initial_screen))
-    
-    # User given an option to save initial screening
-    save_prompt <- readline(prompt = "Choose an option on output (1, 2, 3, or 4): 
-    1. Save and Stop 
-    2. Save and Continue 
-    3. Don't Save and Stop
-    4. Don't Save and Continue")  
-    
-    # if encounters invalid response to prompt, asks again
-    while (!save_prompt %in% c("1", "2", "3", "4")) {
-      save_prompt <- readline(prompt = "Invalid choice. Please enter 1, 2, 3 or 4: ")
-    }
-    
-    # follows the user defined save procedure
-    if (tolower(save_prompt) %in% c("1", "2")) { # save output
-      write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
-      assign("initial_screen", initial_screen, envir = .GlobalEnv)
-      cat("\n\nDataframe saved as 'initial_screen.csv'.\n")
-      if (tolower(save_prompt) == "1"){ # stops running
-        options(warn = 1)
-        stop("\n\nExecution stopped as per user choice.\n")
-      }
-    } else { # skips all
-      if (tolower(save_prompt) == "3"){
-        options(warn = 1)
-        stop("\n\nExecution stopped as per user choice.\n")
-      }
-    }
-  }
-  
-  
-  # verbose UI
-  if (verbose != 0){cat("\nSelection Step ...")}
-  
-  # combines all survivor lists from all modules
-  survivors <- lapply(survivor_results, `[[`, "survivor")
   initial_screen <- do.call(rbind, lapply(survivor_results, `[[`, "screen_df"))
-  names(survivors) <- module_list
-  
-  survivor_list <- survivors
-  names(survivor_list) <- module_list
-  survivors <- do.call('rbind', survivors)
-  survivors <- as.data.frame(survivors, stringsAsFactors = FALSE)
-  survivors[, 2] <- as.numeric(survivors[, 2])
-  names(survivors) <- c("featureID", "Permutation VIM")
-  X_surv <- X[, names(X) %in% survivors[,1]]
-  if(!is.null(Z)) {
-    X_surv <- cbind(X_surv, Z, stringsAsFactors=FALSE)
+
+  # ── Initial screening output ──────────────────────────────────────────────────
+  if (!is.null(auto_initial) && auto_initial %in% c("1", "2")) {
+    write.csv(initial_screen, "initial_screen.csv", row.names = FALSE)
+    if (verbose >= 1L) cat("Initial screen saved to 'initial_screen.csv'.\n")
+    if (auto_initial == "1")
+      stop("Execution stopped after initial screen (auto_initial='1').", call. = FALSE)
   }
-  
-  ## Selection Step
-  
-  # begin runtime for selection step
-  start_time <- Sys.time()
-  
-  # sets up selection step parameters
-  select_args <- list(X_surv, y, num_processors, nodesize)
-  select_args <- c(select_args, select_control)
-  names(select_args)[1:4] <- c("X", "y", "num_processors", "nodesize")
-  
-  # RFE via fastshap
-  if (shap_model == "full"){
-    select_results <- select_RFE(select_args$X, select_args$y, 
-                                 select_args$drop_fraction, shap_model,
-                                 select_args$number_selected, CLASSIFICATION,
-                                 select_args$mtry_factors,
-                                 select_args$ntree_factor, select_args$min_ntree,
-                                 select_args$num_processors, select_args$nodesize,
-                                 nsim = nsim, seed = seed)
-  }
-  
-  # RFE via permutation VIMs
-  if (shap_model == "after"){
-    select_results <- select_RFE(select_args$X, select_args$y, 
-                                 select_args$drop_fraction, shap_model,
-                                 select_args$number_selected, CLASSIFICATION,
-                                 select_args$mtry_factors,
-                                 select_args$ntree_factor, select_args$min_ntree,
-                                 select_args$num_processors, select_args$nodesize,
-                                 nsim = nsim, seed = seed)
-  }
-  
-  cat("Done. \n")
-  
-  # end runtime for selection step
-  end_time <- Sys.time()
-  runtime$Selection <- as.numeric(difftime(end_time, start_time, units = "secs"))
-  
-  cat("Running Final Random Forest...")
-  # gathers final surviving list
-  final_list <- select_results[[1]]
-  selection_list <- select_results[[2]]
-  final_list[, 2] <- round(as.numeric(final_list[, 2]), 4)
-  row.names(final_list) <- NULL
-  colnames(final_list) <- c("feature_name", "variable_importance")
-  final_list <- as.data.frame(final_list, stringsAsFactors=FALSE)
-  final_list[, 2] <- as.numeric(final_list[, 2])
-  final_list <- cbind(final_list, rep(".", dim(final_list)[1]),
-                      stringsAsFactors=FALSE)
-  names(final_list)[3] <- c("module_membership")
-  
-  # selection step results for X, module membership
-  select_X <- names(X)[which(names(X) %in% final_list[, 1])]
-  select_mods <- module_membership[which(names(X) %in% final_list[,1])]
-  select_order <- final_list[, 1][which(final_list[,1] %in% names(X))]
-  select_mods <- select_mods[match(select_order, select_X)]
-  final_list[, 3][final_list[, 1] %in% names(X)] <- select_mods
-  final_X <- X[, names(X) %in% final_list[, 1], drop=FALSE]
-  if(!is.null(Z)) {
-    final_X <- cbind(final_X, Z[, names(Z) %in% final_list[, 1], drop=FALSE],
-                     stringsAsFactors=FALSE)
-  }
-  
-  # sets Random Forest Variable for final run
-  current_p <- dim(final_X)[2]
-  if(CLASSIFICATION == TRUE) {
-    final_mtry <- min(ceiling(select_control$mtry_factor*current_p/3),
-                      current_p)
-  }
-  if(CLASSIFICATION == FALSE) {
-    final_mtry <- min(ceiling(select_control$mtry_factor*current_p),
-                      current_p)
-  }
-  
-  # gets test predictors from final_X for Random Forest
-  if(!is.null(test_features)) {
-    test_features <- test_features[, which(names(test_features) %in%
-                                             names(final_X))]
-  }
-  
-  # begin runtime for final RF
-  start_time <- Sys.time()
-  
-  # final Random Forest
-  final_rf <- ranger(
-    dependent.variable.name = "y",
-    data = data.frame(y = y, final_X),
-    mtry = final_mtry,
-    num.trees = final_ntree,
-    importance = "permutation",
-    min.node.size = nodesize,
-    probability = CLASSIFICATION,        
-    classification = TRUE,
-    verbose = FALSE,
-    num.threads = num_processors,
-    seed = seed
+  if (!is.null(auto_initial) && auto_initial == "3")
+    stop("Execution stopped after initial screen (auto_initial='3').", call. = FALSE)
+
+  # ── Assemble survivor pool ────────────────────────────────────────────────────
+  survivor_list  <- lapply(survivor_results, `[[`, "survivor")
+  names(survivor_list) <- module_list_screen
+
+  survivors         <- do.call(rbind, survivor_list)
+  survivors         <- as.data.frame(survivors, stringsAsFactors = FALSE)
+  survivors[, 2]    <- as.numeric(survivors[, 2])
+  names(survivors)  <- c("featureID", "Permutation VIM")
+  X_surv <- X[, names(X) %in% survivors[, 1], drop = FALSE]
+
+  # ── Phase 2: Shadow-stability selection ──────────────────────────────────────
+  if (verbose >= 1L) cat("Selecting stable features ...\n")
+  t0 <- proc.time()
+
+  X_surv_mat       <- as.matrix(X_surv); mode(X_surv_mat) <- "double"
+
+  surv_feat_to_mod <- unlist(lapply(names(survivor_list), function(mod) {
+    df <- survivor_list[[mod]]
+    if (is.null(df) || nrow(df) == 0L) return(character(0))
+    setNames(rep(mod, nrow(df)), as.character(df[, 1L]))
+  }))
+  module_assigns_ordered <- surv_feat_to_mod[colnames(X_surv)]
+  module_assigns_ordered[is.na(module_assigns_ordered)] <- "unknown"
+
+  module_ev <- vapply(names(survivor_list), function(mod) {
+    df <- survivor_list[[mod]]
+    if (is.null(df) || nrow(df) == 0L) return(0.0)
+    mean(as.numeric(df[, 2L]), na.rm = TRUE)
+  }, numeric(1L))
+
+  select_py <- .sf_py$run_select_rfe(
+    X_surv_mat              = X_surv_mat,
+    y                       = y_py,
+    feature_names_surv      = as.list(colnames(X_surv)),
+    module_assignments_surv = as.list(as.character(module_assigns_ordered)),
+    module_names_ev         = as.list(names(module_ev)),
+    module_scores_ev        = as.list(as.numeric(module_ev)),
+    drop_fraction           = sl$drop_fraction,
+    number_selected         = sl$number_selected,
+    mtry_factor             = sl$mtry_factor,
+    ntree_factor            = as.numeric(sl$ntree_factor),
+    min_ntree               = as.integer(sl$min_ntree),
+    nodesize                = as.integer(nodesize),
+    classification          = CLASSIFICATION,
+    seed                    = as.integer(seed),
+    n_jobs                  = as.integer(num_processors),
+    max_modsize             = as.integer(max_modsize),
+    n_boots                 = as.integer(sl$n_boots),
+    pi_thr                  = as.numeric(sl$pi_thr),
+    evidence_min_pct        = as.numeric(sl$evidence_min_pct),
+    indep_modules           = if (!is.null(sl$indep_modules))
+                                as.list(sl$indep_modules) else NULL,
+    shadow_mode             = sl$shadow_mode,
+    shadow_percentile       = as.numeric(sl$shadow_percentile),
+    pi_thr_indep            = if (!is.null(sl$pi_thr_indep))
+                                as.numeric(sl$pi_thr_indep) else NULL,
+    k_corr_pool             = if (!is.null(sl$k_corr_pool))
+                                as.integer(sl$k_corr_pool) else NULL,
+    k_ind_pool              = if (!is.null(sl$k_ind_pool))
+                                as.integer(sl$k_ind_pool) else NULL,
+    ind_selection_mode      = sl$ind_selection_mode,
+    use_dml_residual        = as.logical(sl$use_dml_residual),
+    dml_n_folds             = as.integer(sl$dml_n_folds),
+    dml_ntree               = as.integer(sl$dml_ntree),
+    dml_scope               = sl$dml_scope,
+    dual_pass2              = as.logical(sl$dual_pass2),
+    k_ind_pass2             = if (!is.null(sl$k_ind_pass2))
+                                as.integer(sl$k_ind_pass2) else NULL,
+    ind_bypass_pass2        = as.logical(sl$ind_bypass_pass2),
+    use_interventional_shap = as.logical(sl$use_interventional_shap),
+    interventional_bg_size  = as.integer(sl$interventional_bg_size),
+    split_mode              = sl$split_mode,
+    split_pct_select        = as.numeric(sl$split_pct_select),
+    c_corr                  = as.integer(sl$c_corr),
+    use_rfe_trim            = as.logical(sl$use_rfe_trim),
+    null_floor_adjust       = as.logical(sl$null_floor_adjust),
+    verbose                 = as.logical(verbose >= 2L)
   )
-  
-  # extracts module membership of final survivors
-  final_module_membership <- as.data.frame(cbind(names(X), module_membership),
-                                           stringsAsFactors=FALSE)
-  names(final_module_membership) <- c("feature_name", "module")
-  
-  # final variable importance measure via fastshap
-  predict_function <- if (CLASSIFICATION) {
-    if (num_classes == 2) {
-      function(object, newdata) {
-        preds <- predict(object, data = newdata, seed = seed)$predictions
-        return(preds[, 1])  # ranger returns a matrix with one column: prob of class 1
-      }
-    } else if (num_classes > 2) {
-      function(object, newdata) {
-        preds <- predict(object, data = newdata, seed = seed)$predictions
-        return(preds)  # returns matrix with class probabilities
-      }
-    } else {
-      stop("Invalid or single-class data in y")
-    }
+
+  runtime$Selection <- (proc.time() - t0)["elapsed"]
+
+  # ── Unpack Python selection output ───────────────────────────────────────────
+  stable_features <- as.character(select_py$final_features)
+  n_stable        <- length(stable_features)
+
+  if (verbose >= 1L)
+    cat(sprintf("Stable features: %d\n", n_stable))
+
+  stability_freq_vec <- if (n_stable > 0L)
+    setNames(as.numeric(select_py$stability_freq), stable_features)
+  else
+    setNames(numeric(0), character(0))
+
+  shap_matrix <- if (n_stable > 0L && length(select_py$shap_matrix) > 0L) {
+    matrix(
+      as.numeric(unlist(select_py$shap_matrix)),
+      nrow     = nrow(X_surv),
+      ncol     = n_stable,
+      dimnames = list(NULL, stable_features)
+    )
   } else {
-    function(object, newdata) {
-      preds <- predict(object, data = newdata, seed = seed)$predictions
-      return(preds)  # regression: numeric vector
-    }
+    matrix(NA_real_, nrow = nrow(X_surv), ncol = 0L)
   }
-  
-  if(num_processors > 1 ){
-    plan(multisession, workers = num_processors)
+
+  # ── TreeSHAP interaction matrix (p × p mean |SHAP interaction|) ──────────────
+  interaction_matrix <- if (n_stable > 0L && length(select_py$interaction_matrix) > 0L) {
+    m <- matrix(
+      as.numeric(unlist(select_py$interaction_matrix)),
+      nrow     = n_stable,
+      ncol     = n_stable,
+      dimnames = list(stable_features, stable_features)
+    )
+    m
+  } else {
+    NULL
   }
-  
-  set.seed(seed)
-  
-  shap_final_obj <- suppressMessages(fastshap::explain(
-    object = final_rf,
-    X = final_X,
-    pred_wrapper = predict_function,
-    nsim = final_nsim,
-    adjust = TRUE,
-    parallel = parallel,
-    shap_only = FALSE, 
-    .packages = "ranger"
-  ))
-  
-  if(num_processors > 1 ){
-    plan(sequential)
+
+  selection_list <- lapply(seq_along(select_py$selection_list_feats), function(i) {
+    data.frame(
+      feature_name        = as.character(select_py$selection_list_feats[[i]]),
+      variable_importance = round(as.numeric(select_py$selection_list_vims[[i]]), 4L),
+      stringsAsFactors    = FALSE
+    )
+  })
+
+  # ── Per-pool shadow-stability data (for plot_stability_elbow) ───────────────
+  stability_data <- if (!is.null(select_py$pool_stability) &&
+                         length(select_py$pool_stability) > 0L) {
+    pool_rows <- lapply(select_py$pool_stability, function(p) {
+      n_p <- length(p$feature_names)
+      if (n_p == 0L) return(NULL)
+      er  <- if (!is.null(p$elbow_rank)) as.integer(p$elbow_rank) else NA_integer_
+      data.frame(
+        pool        = rep(as.character(p$pool), n_p),
+        rank        = seq_len(n_p),
+        feature     = as.character(p$feature_names),
+        freq        = as.numeric(p$freqs),
+        selected    = as.logical(p$selected),
+        threshold   = rep(as.numeric(p$threshold), n_p),
+        elbow_rank  = rep(er, n_p),
+        stringsAsFactors = FALSE
+      )
+    })
+    do.call(rbind, Filter(Negate(is.null), pool_rows))
+  } else {
+    NULL
   }
-  
-  shap_final <- shap_final_obj$shapley_values
-  var_importance_final <- colMeans(abs(shap_final))
-  var_importance_final <- sort(var_importance_final, decreasing = TRUE)
-  var_importance_final <- data.frame(vim = var_importance_final)
-  
-  # extracts final shapley values for each survivor
-  shap_final_list <- data.frame(feature_name = rownames(var_importance_final),
-                                variable_importance = var_importance_final[,1])
-  shap_final_list[, 2] <- round(as.numeric(shap_final_list[, 2]), 4)
-  row.names(shap_final_list) <- NULL
-  shap_final_list <- as.data.frame(shap_final_list, stringsAsFactors=FALSE)
-  shap_final_list[, 2] <- as.numeric(shap_final_list[, 2])
-  shap_final_list <- cbind(shap_final_list, rep(".", dim(shap_final_list)[1]),
-                           stringsAsFactors=FALSE)
-  names(shap_final_list)[3] <- c("module_membership")
-  
-  select_X <- names(X)[which(names(X) %in% shap_final_list[, 1])]
-  select_mods <- module_membership[which(names(X) %in% shap_final_list[,1])]
-  select_order <- shap_final_list[, 1][which(shap_final_list[,1] %in% names(X))]
-  select_mods <- select_mods[match(select_order, select_X)]
-  shap_final_list[, 3][shap_final_list[, 1] %in% names(final_X)] <- select_mods
-  
-  # end runtime for final RF
-  end_time <- Sys.time()
-  runtime$Final_RF <- as.numeric(difftime(end_time, start_time, units = "secs"))
-  
-  # output function
-  out <- shapley_forest(final_rf, final_module_membership,
-                        survivor_list=survivor_list,
-                        selection_list=selection_list, 
-                        final_shap = shap_final_list,
-                        shap_obj = shap_final_obj,
-                        final_X = final_X,
-                        runtime = runtime)
-  
-  # verbose message
-  if (verbose != 0){cat("Done \n")}
-  
-  # make sure make sure parallel is off now
-  if (num_processors > 1) {
-    registerDoSEQ()
+
+  # ── Phase 3: Final ranger RF ─────────────────────────────────────────────────
+  if (verbose >= 1L) cat("Fitting final model ...\n")
+  t0 <- proc.time()
+
+  feature_list <- data.frame(
+    feature_name        = stable_features,
+    variable_importance = round(as.numeric(select_py$final_vims), 4L),
+    module_membership   = as.character(module_membership[stable_features]),
+    stringsAsFactors    = FALSE
+  )
+
+  final_X    <- X[, stable_features, drop = FALSE]
+  current_p  <- ncol(final_X)
+  final_mtry <- if (CLASSIFICATION)
+    min(ceiling(sl$mtry_factor * current_p / 3L), current_p)
+  else
+    min(ceiling(sl$mtry_factor * sqrt(current_p)), current_p)
+
+  final_rf <- ranger::ranger(
+    x             = final_X,
+    y             = y,
+    mtry          = final_mtry,
+    num.trees     = as.integer(final_ntree),
+    importance    = "none",
+    min.node.size = as.integer(nodesize),
+    probability   = CLASSIFICATION,
+    verbose       = FALSE,
+    num.threads   = as.integer(num_processors),
+    seed          = as.integer(seed)
+  )
+
+  final_module_membership <- data.frame(
+    feature_name = names(final_X),
+    module       = as.character(module_membership[names(final_X)]),
+    stringsAsFactors = FALSE
+  )
+
+  # ── Build final_SHAP data frame (from Python TreeSHAP) ───────────────────────
+  mean_shap <- setNames(as.numeric(select_py$final_vims), stable_features)
+
+  shap_final_list <- data.frame(
+    feature_name        = stable_features,
+    variable_importance = round(mean_shap, 4L),
+    module_membership   = as.character(module_membership[stable_features]),
+    stringsAsFactors    = FALSE
+  )
+
+  # Add per-observation SHAP CIs if matrix is available
+  if (ncol(shap_matrix) > 0L) {
+    feat_ord  <- stable_features
+    valid_cols <- feat_ord[feat_ord %in% colnames(shap_matrix)]
+    shap_ord  <- shap_matrix[, valid_cols, drop = FALSE]
+    n_obs     <- nrow(shap_ord)
+
+    abs_mat      <- abs(shap_ord)
+    mean_abs     <- colMeans(abs_mat)
+    se_abs       <- apply(abs_mat,  2L, sd) / sqrt(n_obs)
+    mean_signed  <- colMeans(shap_ord)
+    se_signed    <- apply(shap_ord, 2L, sd) / sqrt(n_obs)
+
+    shap_final_list$mean_abs_shap    <- round(mean_abs[feat_ord],                              4L)
+    shap_final_list$se_abs_shap      <- round(se_abs[feat_ord],                                4L)
+    shap_final_list$ci_lower_abs     <- round(pmax(0, mean_abs[feat_ord] - 1.96 * se_abs[feat_ord]), 4L)
+    shap_final_list$ci_upper_abs     <- round(mean_abs[feat_ord] + 1.96 * se_abs[feat_ord],   4L)
+    shap_final_list$mean_signed_shap <- round(mean_signed[feat_ord],                           4L)
+    shap_final_list$se_signed_shap   <- round(se_signed[feat_ord],                             4L)
+    shap_final_list$ci_lower_signed  <- round(mean_signed[feat_ord] - 1.96 * se_signed[feat_ord], 4L)
+    shap_final_list$ci_upper_signed  <- round(mean_signed[feat_ord] + 1.96 * se_signed[feat_ord], 4L)
+    shap_final_list$stability_freq   <- round(stability_freq_vec[feat_ord],                    4L)
   }
-  return(out)
+
+  runtime$Final_RF <- (proc.time() - t0)["elapsed"]
+
+  # shap_obj: $shapley_values = signed n×p SHAP matrix
+  #           $interaction_matrix = p×p mean |SHAP interaction| (TreeSHAP exact)
+  shap_obj <- list(
+    shapley_values    = shap_matrix,
+    interaction_matrix = interaction_matrix
+  )
+  class(shap_obj) <- "explanation"
+
+  if (verbose >= 1L) cat("Done.\n")
+  options(warn = 1)
+
+  shapley_forest(
+    final_rf          = final_rf,
+    final_X           = final_X,
+    module_membership = final_module_membership,
+    WGCNA_object      = NULL,
+    survivor_list     = survivor_list,
+    selection_list    = selection_list,
+    final_shap        = shap_final_list,
+    shap_obj          = shap_obj,
+    runtime           = runtime,
+    feature_list      = feature_list,
+    stability_freq    = stability_freq_vec,
+    stability_data    = stability_data
+  )
 }
 
 
-#' Runs shapley forest algorithm along with WGCNA
+#' Shapley Forest with WGCNA Module Detection
 #'
-#' Runs a weighted gene correlated network analysis. Then runs shapley forest 
-#' algorithm for feature importance through the use of SHAPley values.
-#' 
+#' Runs a Weighted Gene Co-expression Network Analysis (WGCNA) to derive
+#' module membership, then passes the result to \code{\link{sf}}.
+#'
+#' @inheritParams sf
+#' @param WGCNA_params WGCNA parameters. See \code{\link{WGCNA_control}}.
+#'
+#' @return An object of class \code{\link{shapley_forest}} with an additional
+#'   \code{$WGCNA_object} slot containing the raw WGCNA output.
+#'
 #' @export
-#' @param X                 A data.frame. where each column represents a
-#'                          feature vector.
-#' @param y                 Response vector. If performing classification, `y` should 
-#'                          be a factor. If performing regression, `y`
-#'                          should be numeric vector.
-#' @param Z                 A data.frame of additional features that will bypass
-#'                          the screening step.
-#' @param WGCNA_params      WGCNA parameters.
-#'                          See \code{\link[WGCNA]{blockwiseModules}} and
-#'                          \code{\link[fuzzyforest]{WGCNA_control}} for details.
-#'                          \code{WGCNA_params} is an object of type
-#'                          \code{WGCNA_control}.
-#' @param shap_model        Binary indicator for \code{sf} model. If `full`, \code{sf}
-#'                          runs SHAPley values at both screening and selection step.
-#'                          If `after`, \code{sf} model runs SHAPley values at the end
-#'                          of final model and keeps permutation VIMs usage at other steps.
-#'                          `full` is default.
-#' @param min_features      Defines minimum feature allowed for each module. If `debug` is `1`
-#'                          or `2`, modules below `min_features` after WGCNA call will be
-#'                          prompted to the user. See \code{debug} for more info. During
-#'                          screening and selection step, if `debug` is 
-#'                          not `-1`, modules below `min_features` will only keep non-zero
-#'                          important features during each Recursive Feature Elimination
-#'                          iteration.
-#' @param verbose           Defines the warning message protocol. If `0`, no warning or UI
-#'                          will be displayed. If `1`, warnings and UI progress bar will
-#'                          be displayed.
-#' @param debug             Sets the debugging procedures. If `-1`, all debugging functions
-#'                          will be bypassed. If `0`, debugging at the WGCNA will be bypassed.
-#'                          If `1`, debugging during Recursive Feature Elimination at both screening 
-#'                          and selection step will be bypassed. 
-#'                          If `2`, all debugging functions will be ran. Below
-#'                          are the debugging features. Debugging at WGCNA detects if each module
-#'                          is below the \code{min_features}. Debugging at RFE will keep only 
-#'                          non zero important feature at each elimination step for modules below
-#'                          \code{min_features}.
-#' @param initial           Binary indicator to print out initial screening step results (ie the
-#'                          results from the first Recursive Feature Elimination at the screening
-#'                          step for each module). If `True`, \code{sf} will pause after RFE
-#'                          allowing users to select output method for initial screening. If `False`,
-#'                          it will bypass all initial screening procedure.
-#' @param auto_initial      Bypass readline prompt for \code{initial}. If `1`, `initial_screening.csv`
-#'                          will be saved in directory and stops. If `2`, `initial_screening.csv`
-#'                          will be saved in directory and proceeds. If `3`, nothing saved and stops.
-#'                          If `4`, nothing saved and proceeds. Default is `NULL`. Note if \code{initial},
-#'                          is set to `TRUE`, `auto_initial` will automically be set to `NULL`.
-#' @param screen_params     Defines the parameter settings for the screening step
-#'                          of \link[fuzzyforest]{fuzzyforest}.
-#'                          See \code{\link[fuzzyforest]{screen_control}} for
-#'                          details. \code{screen_params} is an object of type
-#'                          \code{screen_control}.
-#' @param select_params     Defines the parameter setting for the selection step
-#'                          of \link[fuzzyforest]{fuzzyforest}.
-#'                          See \code{\link[fuzzyforest]{select_control}} for details.
-#'                          \code{select_params} is an object of type
-#'                          \code{select_control}.
-#' @param final_ntree       The number of trees grown in the final random forest in
-#'                          the selection step. This random forest contains all
-#'                          the surviving features.
-#' @param num_processors    Number of processors used to run shapley forests.
-#' @param nodesize          Minimum terminal nodesize. 1 if classification.
-#'                          5 if regression.  If the sample size is very large,
-#'                          the trees will be grown extremely deep.
-#'                          This may lead to issues with memory usage and may
-#'                          lead to significant increases in the time it takes
-#'                          the algorithm to run. In this case,
-#'                          it may be useful to increase \code{nodesize}.
-#' @param test_features     A data.frame containing features from a test set.
-#'                          The data.frame should contain the features in both
-#'                          X and Z. Used during final Random Forest call (after
-#'                          screening and selection step).
-#' @param test_y            The responses for the test set. Used during final Random 
-#'                          Forest call (after screening and selection step).
-#' @param nsim              Number of Monte Carlo repetitions for estimating SHAP
-#'                          values in the screening step. Default is `1`. Increasing
-#'                          \code{nsim} leads to more accurate results, but at the cost
-#'                          of computational cost.
-#' @param final_nsim        Number of Monte Carlo repetitions for estimating SHAP
-#'                          values in the selection step. Default is `1`. \code{final_nsim}
-#'                          should be as large as feasibly possible.
-#' @param seed              RNG seed for reproducibility. Default is based on current
-#'                          system time (`as.integer(Sys.time()))`).
-#' @return Returns an object of type `shapley_forest`, which is a list containing the essential 
-#' output of shapley forests, including a data.frame of selected features and the random forest 
-#' model fitted using those features. See \code{shapley_forest} for more details.
-#' 
-#' @import fuzzyforest
-#' @import ranger
-#' @import fastshap
-#' 
-#' 
+#' @importFrom ranger ranger
+#'
 #' @references
-#' Bin Zhang and Steve Horvath (2005) "A General Framework for Weighted Gene
-#' Co-Expression Network Analysis", Statistical Applications in Genetics and
-#' Molecular Biology: Vol. 4: No. 1, Article 17
-#' 
-#' Daniel Conn, Tuck Ngun, Christina M. Ramirez (2015). Fuzzy Forests: a New
-#' WGCNA Based Random Forest Algorithm for Correlated, High-Dimensional Data,
-#' Journal of Statistical Software, Manuscript in progress.
-#' 
-#' Leo Breiman (2001). Random Forests. Machine Learning, 45(1), 5-32.
-#'
-#' Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model 
-#' predictions. Advances in neural information processing systems, 30.
-#'
-wsf <- function(X, y, Z=NULL, shap_model = "full",
-                    WGCNA_params=WGCNA_control(p=6),
-                    min_features=20, verbose = 1, debug = 2, 
-                    initial = TRUE, auto_initial = NULL,
-                    screen_params=fuzzyforest:::screen_control(min_ntree=5000),
-                    select_params=fuzzyforest:::select_control(min_ntree=5000),
-                    final_ntree=500, num_processors, nodesize,
-                    test_features=NULL, test_y=NULL, nsim=1, final_nsim=100) {
-  
-  ## validating prerequisites
-  if ( !("package:WGCNA" %in% search()) ) {
-    stop("WGCNA must be loaded and attached. Type library(WGCNA) to do so.",
-         call. = FALSE)
-  }
-  if (!(is.vector(y) || is.factor(y))) {
-    stop("y must be vector or factor")
-  }
-  
+#' Zhang, B., & Horvath, S. (2005). A general framework for weighted gene
+#'   co-expression network analysis. \emph{Statistical Applications in Genetics
+#'   and Molecular Biology}, 4(1), Article 17.
+wsf <- function(X, y,
+                WGCNA_params  = WGCNA_control(p = 6),
+                screen_params = screen_control(),
+                select_params = select_control(),
+                final_ntree   = 500L,
+                nodesize      = NULL,
+                num_processors = 1L,
+                max_modsize   = 5000L,
+                auto_initial  = "4",
+                verbose       = 1L,
+                seed          = as.integer(Sys.time()),
+                backend       = "python",
+                r_shap        = "permutation") {
+
+  if (!requireNamespace("WGCNA", quietly = TRUE))
+    stop("Package 'WGCNA' is required for wsf(). Install it first.", call. = FALSE)
+
+  if (!(is.vector(y) || is.factor(y)))
+    stop("y must be a numeric vector or factor.", call. = FALSE)
+
   # Convert X to numeric for WGCNA
-  integer_test <- sapply(X, is.integer)
-  if( sum(integer_test) > 0 ) {
-    ints <- which(integer_test == TRUE)
-    X[, ints] <- apply(X[, ints, drop=FALSE], 2, as.numeric)
+  integer_cols <- sapply(X, is.integer)
+  if (any(integer_cols))
+    X[, integer_cols] <- lapply(X[, integer_cols, drop = FALSE], as.numeric)
+  if (!all(sapply(X, is.numeric)))
+    stop("All columns of X must be numeric for WGCNA.", call. = FALSE)
+
+  # Run WGCNA
+  wgcna_ctrl <- WGCNA_params
+  WGCNA_args <- c(list(datExpr = X, power = wgcna_ctrl$power),
+                  wgcna_ctrl$extra_args)
+  if (verbose == 0L) {
+    invisible(capture.output(suppressWarnings(suppressMessages({
+      bwise <- do.call(WGCNA::blockwiseModules, WGCNA_args)
+    }))))
+  } else {
+    bwise <- do.call(WGCNA::blockwiseModules, WGCNA_args)
   }
-  numeric_test <- sapply(X, is.numeric)
-  if (sum(numeric_test) != dim(X)[2]) {
-    stop("The columns of X must be numeric.")
-  }
-  
-  CLASSIFICATION <- is.factor(y)
-  if(CLASSIFICATION == TRUE) {
-    if(missing(nodesize)){
-      nodesize <- 1
-    }
-  }
-  if(CLASSIFICATION == FALSE) {
-    if(missing(nodesize)){
-      nodesize <- 5
-    }
-  }
-  if (shap_model != "full" && shap_model != "after") {
-    stop("shap_model must be `full` or `after`. Type help(sf) or help(wsf) for details.")
-  }
-  
-  if (!verbose %in% c(0, 1)) {
-    stop("verbose must be 0 or 1")
-  }
-  
-  if (!debug %in% c(-1, 0, 1, 2)) {
-    stop("debug must be -1, 0, 1, or 2")
-  }
-  
-  if (verbose == 0 && !debug %in% c(-1, 1)){
-    stop("if debug is 0 or 2, verbose must be 1")
-  }
-  
-  if (!is.logical(initial) || length(initial) != 1) {
-    stop("initial must be boolean.")
-  }
-  
-  if (!is.null(auto_initial) && !auto_initial %in% c(1, 2, 3, 4) ){
-    stop("auto_initial must be NULL, 1, 2, 3, or 4")
-  }
-  
-  if (initial == FALSE){
-    auto_initial = NULL
-  }
-  
-  if (verbose == 0){
-    options(warn = -1)
-  }
-  
-  # Set Up for Parameters at each step
-  WGCNA_control <- WGCNA_params
-  screen_control <- screen_params
-  select_control <-  select_params
-  
-  # Define WGCNA arguments
-  WGCNA_args <- list(X,WGCNA_control$power)
-  WGCNA_args <- c(WGCNA_args, WGCNA_control$extra_args)
-  names(WGCNA_args) <- c("datExpr", "power", names(WGCNA_control$extra_args))
-  
-  # Run WGCNA dependent on verbose setting
-  if (verbose == 0){ # supresses messages
-    invisible(capture.output({
-      suppressWarnings(suppressMessages({
-        bwise <- do.call("blockwiseModules", WGCNA_args)
-      }))
-    }))
-  } else { # allows for WGCNA messages
-    bwise <- do.call("blockwiseModules", WGCNA_args)
-  }
-  
-  # Gathers module membership for sf
   module_membership <- bwise$colors
-  
-  # Debug: if low frequency modules exists, users are warned
-  
-  min_features <- min_features # defined low frequency threshold
-  
-  if (!debug %in% c(-1, 0)){ # debug only runs if desired by user
-    # finds low frequency modules
-    feature_counts <- table(module_membership) 
-    low_frequency_modules <- feature_counts[feature_counts <= min_features]
-    
-    # prompts user if low frequency modules exist
-    if (length(low_frequency_modules) > 0) {
-      warning(sprintf("\n\n WGCNA - Some modules contain fewer than % s features.", min_features))
-      response <- readline(prompt = "Do you wish to continue? (yes/no): ")
-      if (tolower(response) != "yes") {
-        stop(cat(sprintf("Process terminated by the user. Low Frequency Modules:\n%s", 
-                         paste(capture.output(print(low_frequency_modules)), 
-                               collapse = "\n")), "\n")) # stops and prints module freq counts
-      }
-    }
-  }
-  
-  # Sets up for screening parameters
-  screen_drop_fraction <- screen_control$drop_fraction
-  screen_keep_fraction <- screen_control$keep_fraction
-  screen_mtry_factor <- screen_control$mtry_factor
-  screen_ntree_factor <- screen_control$ntree_factor
-  screen_min_ntree <- screen_control$min_ntree
-  
-  # Begins Screening Step, calls sf
-  #if (verbose != "0"){ cat("Screening Step ... \n")}
-  out <- sf(X, y, Z, shap_model, module_membership,
-                min_features, verbose, debug, initial, 
-                auto_initial, screen_control, 
-                select_control, final_ntree,
-                num_processors, nodesize=nodesize,
-                test_features=test_features, test_y=test_y,
-                seed = seed)
-  
-  # adds WGCNA object at output
+
+  out <- sf(
+    X = X, y = y,
+    module_membership = module_membership,
+    screen_params     = screen_params,
+    select_params     = select_params,
+    final_ntree       = final_ntree,
+    nodesize          = nodesize,
+    num_processors    = num_processors,
+    max_modsize       = max_modsize,
+    auto_initial      = auto_initial,
+    verbose           = verbose,
+    seed              = seed,
+    backend           = backend,
+    r_shap            = r_shap
+  )
+
   out$WGCNA_object <- bwise
-  
-  # resets warn function
-  options(warn = 1)
-  
-  return(out)
+  out
 }

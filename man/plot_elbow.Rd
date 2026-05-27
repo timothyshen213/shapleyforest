@@ -3,7 +3,7 @@
 \name{plot_elbow}
 \alias{plot_elbow}
 \alias{plot_elbow.shapley_forest}
-\title{Plot Elbow Plot from shapley forest}
+\title{Plot Elbow Plot of Absolute SHAP Values for a Shapley Forest Object}
 \usage{
 plot_elbow(object, ...)
 
@@ -21,32 +21,29 @@ plot_elbow(object, ...)
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 
-\item{main}{Main title for module plot. Default is \code{NULL} and will title
-"Elbow Plot of Absolute SHAP values"}
+\item{main}{Plot title. Default \code{"Elbow Plot of Absolute SHAP Values"}.}
 
-\item{xlab}{Title for x-axis. Default is \code{NULL} and will be titled "Features".}
+\item{xlab}{X-axis label. Default \code{"Features"}.}
 
-\item{ylab}{Title for y-axis. Default is \code{NULL} and will be titled
-"Absolute SHAP Values"}
+\item{ylab}{Y-axis label. Default \code{"Absolute SHAP Values"}.}
 
-\item{colorName}{Title for module membership name. Only will display if \code{color} == \code{TRUE}.
-Default is \code{NULL} and will be titled "Modules"}
+\item{colorName}{Legend title for module colour. Default \code{"Module"}.}
 
-\item{color}{Binary variable. Colors each SHAP value by the module color.
-Default is \code{TRUE}.}
+\item{color}{Colour points by module membership? Default \code{TRUE}.}
 
-\item{module_labels}{Optional. A list of labels for the modules. Default is \code{NULL}.}
+\item{module_labels}{Optional two-column data frame of label mappings. Default \code{NULL}.}
 }
 \value{
-A ggplot object representing the module membership distribution colored by importance.
+A \code{ggplot2} object (invisibly).
 }
 \description{
-Generates a elbow plot of Absolute SHAP values of the final SHAP values.
+Ranks stable features by mean |SHAP| importance and displays an elbow
+(scree) plot, optionally coloured by module membership.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_elbow(shapley_forest)}: Module plot for an object of class \code{shapley_forest} adapted from \code{fuzzyforest}.
+\item \code{plot_elbow(shapley_forest)}: Elbow plot for a \code{shapley_forest} object.
 
 }}

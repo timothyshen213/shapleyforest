@@ -3,7 +3,7 @@
 \name{plot_modules}
 \alias{plot_modules}
 \alias{plot_modules.shapley_forest}
-\title{Plot Module Plot from shapley forest}
+\title{Plot Module Membership Distribution for a Shapley Forest Object}
 \usage{
 plot_modules(object, ...)
 
@@ -19,28 +19,26 @@ plot_modules(object, ...)
 \arguments{
 \item{object}{A \code{shapley_forest} object.}
 
-\item{...}{Obsolete additional arguments.}
+\item{...}{Ignored.}
 
-\item{main}{Main title for module plot. Default is \code{NULL} and will title
-"Module Membership Distribution."}
+\item{main}{Plot title. Default \code{"Module Membership Distribution"}.}
 
-\item{xlab}{Title for x-axis. Default is \code{NULL} and will be titled "Module".}
+\item{xlab}{X-axis label. Default \code{"Module"}.}
 
-\item{ylab}{Title for y-axis. Default is \code{NULL} and will be titled
-"Percentage of features in module."}
+\item{ylab}{Y-axis label. Default \code{"Proportion of features"}.}
 
-\item{module_labels}{Optional. A list of labels for the modules. Default is \code{NULL}.}
+\item{module_labels}{Optional two-column data frame mapping old module labels
+to new display labels. Default \code{NULL}.}
 }
 \value{
-A ggplot object representing the module membership distribution colored by importance.
+A \code{ggplot2} object (invisibly).
 }
 \description{
-Generates a module distribution plot and highlights important features that survived
-after shapley forest algorithm.
-The plot function is derived from \link[fuzzyforest]{fuzzyforest}'s modplot function.
+Shows the proportion of features per module that were selected as stable,
+coloured by selection status.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_modules(shapley_forest)}: Module plot for an object of class \code{shapley_forest} adapted from \code{fuzzyforest}.
+\item \code{plot_modules(shapley_forest)}: Module membership plot for a \code{shapley_forest} object.
 
 }}

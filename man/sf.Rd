@@ -2,144 +2,122 @@
 % Please edit documentation in R/shapff_fit.R
 \name{sf}
 \alias{sf}
-\title{Runs shapley forest algorithm}
+\title{Shapley Forest Feature Selection}
 \usage{
 sf(
   X,
   y,
-  Z = NULL,
-  shap_model = "full",
   module_membership,
-  min_features = 20,
-  verbose = 1,
-  debug = 2,
-  initial = TRUE,
-  auto_initial = NULL,
-  screen_params = fuzzyforest:::screen_control(min_ntree = 5000),
-  select_params = fuzzyforest:::select_control(min_ntree = 5000),
-  final_ntree = 5000,
-  num_processors = 1,
-  nodesize,
-  test_features = NULL,
-  test_y = NULL,
-  nsim = 1,
-  final_nsim = 100,
-  seed = set.seed(as.integer(Sys.time()))
+  screen_params = screen_control(),
+  select_params = select_control(),
+  final_ntree = 500L,
+  nodesize = NULL,
+  num_processors = 1L,
+  max_modsize = 5000L,
+  auto_initial = "4",
+  verbose = 1L,
+  seed = as.integer(Sys.time()),
+  backend = "python",
+  r_shap = "permutation"
 )
 }
 \arguments{
-\item{X}{A data.frame. where each column represents a
-feature vector.}
+\item{X}{A data frame where each column is a feature.}
 
-\item{y}{Response vector. If performing classification, \code{y} should
-be a factor. If performing regression, \code{y}
-should be numeric vector.}
+\item{y}{Response vector (numeric for regression; factor for
+classification).}
 
-\item{Z}{A data.frame of additional features that will bypass
-the screening step.}
+\item{module_membership}{A named character vector assigning each feature in
+\code{X} to a module. Names must match
+\code{colnames(X)}.}
 
-\item{shap_model}{Binary indicator for \code{sf} model. If \code{full}, \code{sf}
-runs SHAPley values at both screening and selection step.
-If \code{after}, \code{sf} model runs SHAPley values at the end
-of final model and keeps permutation VIMs usage at other steps.
-\code{full} is default.}
+\item{screen_params}{Screening parameters. See
+\code{\link{screen_control}}.}
 
-\item{module_membership}{A vector that specifies the module membership for each
-each feature. See \code{wsf} for possible method.}
+\item{select_params}{Selection parameters. See
+\code{\link{select_control}}.}
 
-\item{min_features}{Defines minimum feature allowed for each module. If \code{debug} is
-not \code{-1}, modules below \code{min_features} will only keep non-zero
-important features during each Recursive Feature Elimination
-iteration}
+\item{final_ntree}{Number of trees in the final random forest.
+Default \code{500}.}
 
-\item{verbose}{Defines the warning message protocol. If \code{0}, no warning or UI
-will be displayed. If \code{1}, warnings and UI progress bar will
-be displayed.}
+\item{nodesize}{Minimum terminal node size. Defaults to \code{1}
+for classification and \code{5} for regression.}
 
-\item{debug}{Sets the debugging procedures. If \code{-1}, all debugging functions
-will be bypassed. If \code{0}, debugging at the WGCNA will be bypassed.
-Note for \code{sf}, \code{0} has no effect. If \code{1}, debugging during
-Recursive Feature Elimination at both screening and selection step
-will be bypassed. If \code{2}, all debugging functions will be ran. Below
-are the debugging features. Debugging at WGCNA detects if each module
-is below the \code{min_features}. Debugging at RFE will keep only
-non zero important feature at each elimination step for modules below
-\code{min_features}.}
+\item{num_processors}{Number of parallel threads for random forests.
+Default \code{1}.}
 
-\item{initial}{Binary indicator to print out initial screening step results (ie the
-results from the first Recursive Feature Elimination at the screening
-step for each module). If \code{True}, \code{sf} will pause after RFE
-allowing users to select output method for initial screening. If \code{False},
-it will bypass all initial screening procedure.}
+\item{max_modsize}{Maximum module size before blockwise pre-reduction
+is applied (Python backend only). Default \code{5000}.}
 
-\item{auto_initial}{Bypass readline prompt for \code{initial}. If \code{1}, \code{initial_screening.csv}
-will be saved in directory and stops. If \code{2}, \code{initial_screening.csv}
-will be saved in directory and proceeds. If \code{3}, nothing saved and stops.
-If \code{4}, nothing saved and proceeds. Default is \code{NULL}. Note if \code{initial},
-is set to \code{TRUE}, \code{auto_initial} will automically be set to \code{NULL}.}
+\item{auto_initial}{Controls the initial screening output.
+\code{"1"} — save CSV and stop;
+\code{"2"} — save CSV and continue;
+\code{"3"} — stop without saving;
+\code{"4"} — continue without saving (default).}
 
-\item{screen_params}{Defines the parameter settings for the screening step
-of \link[fuzzyforest]{fuzzyforest}.
-See \code{\link[fuzzyforest]{screen_control}} for
-details. \code{screen_params} is an object of type
-\code{screen_control}.}
+\item{verbose}{Verbosity level. \code{0} = silent; \code{1} =
+progress messages; \code{2} = detailed output.
+Default \code{1}.}
 
-\item{select_params}{Defines the parameter setting for the selection step
-of \link[fuzzyforest]{fuzzyforest}.
-See \code{\link[fuzzyforest]{select_control}} for details.
-\code{select_params} is an object of type
-\code{select_control}.}
+\item{seed}{Integer random seed for reproducibility. Defaults to
+current system time.}
 
-\item{final_ntree}{The number of trees grown in the final random forest in
-the selection step. This random forest contains all
-the surviving features.}
+\item{backend}{Computation backend. \code{"python"} (default) uses
+a Python scikit-learn / SHAP engine via
+\pkg{reticulate} and provides exact TreeSHAP values
+plus an interaction matrix.  \code{"R"} uses a
+pure-R \pkg{ranger} implementation — no Python
+installation required. Choose the final importance
+method with \code{r_shap}.}
 
-\item{num_processors}{Number of processors used to run shapley forests. If
-\code{num_processors} is greater than 1, shapley forest will
-parallelize at each module in the screening step. Furthermore,
-it will call \code{fastshap} and \code{ranger} parallel
-functions at the selection step. See their respective
-documentation.
-NOTE: Setting \code{num_processors > 1} may cause runtimes
-to slow with small datasets (ie n,p < 100).}
-
-\item{nodesize}{Minimum terminal nodesize. 1 if classification.
-5 if regression.  If the sample size is very large,
-the trees will be grown extremely deep.
-This may lead to issues with memory usage and may
-lead to significant increases in the time it takes
-the algorithm to run. In this case,
-it may be useful to increase \code{nodesize}.}
-
-\item{test_features}{A data.frame containing features from a test set.
-The data.frame should contain the features in both
-X and Z. Used during final Random Forest call (after
-screening and selection step).}
-
-\item{test_y}{The responses for the test set. Used during final Random
-Forest call (after screening and selection step).}
-
-\item{nsim}{Number of Monte Carlo repetitions for estimating SHAP
-values in the screening step. Default is \code{1}. Increasing
-\code{nsim} leads to more accurate results, but at the cost
-of computational cost.}
-
-\item{final_nsim}{Number of Monte Carlo repetitions for estimating SHAP
-values in the selection step. Default is \code{1}. \code{final_nsim}
-should be as large as feasibly possible.}
-
-\item{seed}{RNG seed for reproducibility. Default is based on current
-system time (\verb{as.integer(Sys.time()))}).}
+\item{r_shap}{Final SHAP / importance method used when
+\code{backend = "R"}. Ignored for the Python
+backend. One of:
+\describe{
+\item{\code{"permutation"}}{Ranger permutation variable importance
+(default). No extra packages needed. Returns a scalar VIM per
+feature; per-observation SHAP values and SHAP-based plots are
+unavailable.}
+\item{\code{"fastshap"}}{Approximate Shapley values via
+\pkg{fastshap} (\code{nsim = 50} permutations). Requires the
+\pkg{fastshap} package. No interaction matrix.}
+\item{\code{"treeshap"}}{Exact TreeSHAP values via the R
+\pkg{treeshap} package. Requires \pkg{treeshap}. Also computes a
+\eqn{p \times p} interaction matrix, enabling
+\code{detect_interaction()} and
+\code{plot_potential_interactions()}.}
+}}
 }
 \value{
-Returns an object of type \code{shapley_forest}, which is a list containing the essential
-output of shapley forests, including a data.frame of selected features and the random forest
-model fitted using those features. See \code{shapley_forest} for more details.
+An object of class \code{\link{shapley_forest}}.
 }
 \description{
-Runs shapley forest algorithm for feature importance through
-the use of SHAPley values.
+Runs the Shapley Forest algorithm: module-stratified recursive feature
+elimination (screening), followed by shadow-stability selection, and a
+single-shot SHAP importance pass on the stable feature set.
+}
+\examples{
+\dontrun{
+  sf_setup(condaenv = "sfenv")
+
+  data(iris)
+  X   <- iris[, 1:4]
+  y   <- iris$Species
+  mem <- setNames(c("A","A","B","B"), colnames(X))
+
+  res <- sf(X, y, module_membership = mem,
+            screen_params = screen_control(min_ntree = 100),
+            select_params = select_control(n_boots = 25))
+  print(res)
+  plot_importance(res)
+}
 }
 \references{
-TO DO
+Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C.,
+Newey, W., & Robins, J. (2018). Double/debiased machine learning for
+treatment and structural parameters. \emph{The Econometrics Journal},
+21(1), C1–C68.
+
+Lundberg, S. M., & Lee, S. I. (2017). A unified model for interpreting
+predictions. \emph{NeurIPS}, 30.
 }

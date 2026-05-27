@@ -2,7 +2,7 @@
 % Please edit documentation in R/shapff_object.R
 \name{shapley_forest}
 \alias{shapley_forest}
-\title{SHAPley Forest Object}
+\title{Shapley Forest Object}
 \usage{
 shapley_forest(
   final_rf,
@@ -13,33 +13,57 @@ shapley_forest(
   selection_list,
   final_shap,
   shap_obj,
-  runtime
+  runtime,
+  feature_list = NULL,
+  stability_freq = NULL,
+  stability_data = NULL
 )
 }
 \arguments{
-\item{final_rf}{The final random forest object output.}
+\item{final_rf}{Final \code{ranger} object fitted on the stable
+feature set.}
 
-\item{final_X}{The final surviving \code{X}.}
+\item{final_X}{Data frame of features in the stable set.}
 
-\item{module_membership}{Module membership for each feature.}
+\item{module_membership}{Data frame mapping each feature to its module.}
 
-\item{WGCNA_object}{WGCNA object output, if \code{wsf} was called.}
+\item{WGCNA_object}{WGCNA output object, or \code{NULL}.}
 
-\item{survivor_list}{Feature list of surviving features after screening step.}
+\item{survivor_list}{Per-module screening survivors.}
 
-\item{selection_list}{Feature list of surviving features at each iteration
-of the selection step.}
+\item{selection_list}{Feature lists at each selection iteration.}
 
-\item{final_shap}{Feature list of final SHAP features.}
+\item{final_shap}{Data frame of stable features with mean |SHAP|,
+95 \\% CIs, and shadow-stability frequencies.}
 
-\item{shap_obj}{Final shapley forest object from the final surviving features}
+\item{shap_obj}{List with two elements: \code{shapley_values} — an
+\eqn{n \times |U|} signed SHAP matrix; and
+\code{interaction_matrix} — a \eqn{|U| \times |U|}
+matrix of mean absolute TreeSHAP interaction values
+(diagonal = main effects, off-diagonal = pairwise
+interactions). \code{NULL} when unavailable.}
 
-\item{runtime}{Data frame of runtimes of screening step, selection step,
-and final random forest.}
+\item{runtime}{Named list of runtimes (seconds): Screen, Selection,
+Final_RF.}
+
+\item{feature_list}{Data frame of the stable feature set with importance
+scores.}
+
+\item{stability_freq}{Named numeric vector: shadow-bootstrap selection
+frequency per stable feature.}
+
+\item{stability_data}{Data frame with per-pool shadow-stability curves used
+by \code{\link{plot_stability_elbow}}. Columns:
+\code{pool}, \code{rank}, \code{feature}, \code{freq},
+\code{selected}, \code{threshold}, \code{elbow_rank}.
+\code{NULL} if unavailable.}
 }
 \value{
-An object of type \code{shapley_forest}.
+An object of class \code{shapley_forest}.
 }
 \description{
-Object return type for shapley forest algorithm.
+Constructor for the \code{shapley_forest} return type. Users do not call
+this directly; it is called internally by \code{\link{sf}} and
+\code{\link{wsf}}.
 }
+\keyword{internal}
