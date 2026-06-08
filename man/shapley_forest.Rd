@@ -36,9 +36,9 @@ feature set.}
 \item{final_shap}{Data frame of stable features with mean |SHAP|,
 95 \\% CIs, and shadow-stability frequencies.}
 
-\item{shap_obj}{List with two elements: \code{shapley_values} — an
-\eqn{n \times |U|} signed SHAP matrix; and
-\code{interaction_matrix} — a \eqn{|U| \times |U|}
+\item{shap_obj}{List with two elements: \code{shapley_values} (an
+\eqn{n \times |U|} signed SHAP matrix) and
+\code{interaction_matrix} (a \eqn{|U| \times |U|}
 matrix of mean absolute TreeSHAP interaction values
 (diagonal = main effects, off-diagonal = pairwise
 interactions). \code{NULL} when unavailable.}
