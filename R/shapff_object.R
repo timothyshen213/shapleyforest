@@ -11,14 +11,13 @@
 #' @param WGCNA_object    WGCNA output object, or \code{NULL}.
 #' @param survivor_list   Per-module screening survivors.
 #' @param selection_list  Feature lists at each selection iteration.
-#' @param final_shap      Data frame of stable features with mean |SHAP|,
-#'                        95 \% CIs, and shadow-stability frequencies.
-#' @param shap_obj        List with two elements: \code{shapley_values} (an
-#'                        \eqn{n \times |U|} signed SHAP matrix) and
-#'                        \code{interaction_matrix} (a \eqn{|U| \times |U|}
-#'                        matrix of mean absolute TreeSHAP interaction values
-#'                        (diagonal = main effects, off-diagonal = pairwise
-#'                        interactions). \code{NULL} when unavailable.
+#' @param final_shap      Data frame of stable features with mean absolute SHAP,
+#'                        95 percent CIs, and shadow-stability frequencies.
+#' @param shap_obj        List with elements \code{shapley_values} (signed SHAP
+#'                        matrix, samples x stable features) and
+#'                        \code{interaction_matrix} (mean absolute TreeSHAP
+#'                        interaction matrix, stable features x stable features).
+#'                        \code{NULL} when unavailable.
 #' @param runtime         Named list of runtimes (seconds): Screen, Selection,
 #'                        Final_RF.
 #' @param feature_list    Data frame of the stable feature set with importance
