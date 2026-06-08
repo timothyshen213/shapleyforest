@@ -503,6 +503,12 @@ wsf <- function(X, y,
 
   if (!requireNamespace("WGCNA", quietly = TRUE))
     stop("Package 'WGCNA' is required for wsf(). Install it first.", call. = FALSE)
+  # WGCNA's blockwiseModules calls cor() with extra args (weights.x, cosine, ...)
+  # that only WGCNA::cor understands.  When WGCNA is only namespace-loaded
+  # (not library()-attached) the lookup resolves to stats::cor and errors.
+  # attachNamespace() puts WGCNA on the search path without startup noise.
+  if (!"WGCNA" %in% .packages())
+    attachNamespace("WGCNA")
 
   if (!(is.vector(y) || is.factor(y)))
     stop("y must be a numeric vector or factor.", call. = FALSE)
