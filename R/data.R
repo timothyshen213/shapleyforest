@@ -42,3 +42,33 @@ NULL
 #' @usage data(Liver_Exp)
 #' @format A data frame with 66 rows and 3601 columns
 NULL
+
+#' ALL Leukemia Gene Expression Data
+#'
+#' A list containing the top 500 most-variable probe-sets from the Acute
+#' Lymphoblastic Leukemia (ALL) microarray dataset (Chiaretti et al., 2004),
+#' along with the corresponding cell-lineage outcome.
+#'
+#' The full dataset (128 patients, 12 625 probe-sets) was obtained from the
+#' \code{ALL} Bioconductor package.  Features were ranked by across-sample
+#' variance and the top 500 retained.  See \code{data-raw/prep_leukemia.R}
+#' for the exact preprocessing steps.
+#'
+#' @docType data
+#' @keywords datasets
+#' @name leukemia
+#' @usage data(leukemia)
+#' @format A list with two elements:
+#' \describe{
+#'   \item{X}{A numeric matrix with 128 rows (patients) and 500 columns
+#'     (Affymetrix HGU95Av2 probe-sets, already log\eqn{_2}-scaled by the
+#'     original authors).}
+#'   \item{y}{An integer vector of length 128: \code{1} (B-cell lineage) or
+#'     \code{0} (T-cell lineage), derived from the \code{BT} column of the
+#'     original ALL phenotype data.}
+#' }
+#' @references Chiaretti, S. et al. (2004). Gene expression profile of adult
+#'   T-cell acute lymphocytic leukemia identifies distinct subsets of patients
+#'   with different response to therapy and survival. \emph{Blood}, 103(7),
+#'   2771–2778. \doi{10.1182/blood-2003-09-3243}
+NULL
