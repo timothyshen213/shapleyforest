@@ -7,12 +7,12 @@
 \format{
 A list with two elements:
 \describe{
-\item{X}{A numeric matrix with 128 rows (patients) and 500 columns
+\item{X}{A numeric matrix with 79 rows (patients) and 500 columns
 (Affymetrix HGU95Av2 probe-sets, already log\eqn{_2}-scaled by the
 original authors).}
-\item{y}{An integer vector of length 128: \code{1} (B-cell lineage) or
-\code{0} (T-cell lineage), derived from the \code{BT} column of the
-original ALL phenotype data.}
+\item{y}{An integer vector of length 79: \code{1} (BCR/ABL subtype) or
+\code{0} (NEG, cytogenetically normal), derived from the
+\code{mol.biol} column of the original ALL phenotype data.}
 }
 }
 \usage{
@@ -21,13 +21,18 @@ data(leukemia)
 \description{
 A list containing the top 500 most-variable probe-sets from the Acute
 Lymphoblastic Leukemia (ALL) microarray dataset (Chiaretti et al., 2004),
-along with the corresponding cell-lineage outcome.
+along with the corresponding molecular-subtype outcome.
 }
 \details{
-The full dataset (128 patients, 12 625 probe-sets) was obtained from the
-\code{ALL} Bioconductor package.  Features were ranked by across-sample
-variance and the top 500 retained.  See \code{data-raw/prep_leukemia.R}
-for the exact preprocessing steps.
+Starting from the \code{ALL} Bioconductor package (128 patients, 12 625
+probe-sets), samples are restricted to the B-lineage cases carrying one of
+two balanced molecular subtypes — the BCR/ABL (Philadelphia-chromosome, Ph+)
+fusion versus cytogenetically normal (NEG) — yielding 79 patients (37
+BCR/ABL, 42 NEG).  This is the standard \emph{balanced} ALL benchmark used in the
+Bioconductor "Case Studies", replacing the heavily imbalanced B-vs-T lineage
+split.  Features were then ranked by across-sample variance and the top 500
+retained.  See \code{data-raw/prep_leukemia.R} for the exact preprocessing
+steps.
 }
 \references{
 Chiaretti, S. et al. (2004). Gene expression profile of adult

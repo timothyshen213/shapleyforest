@@ -3,10 +3,9 @@ Title: Shapley Forest
 Version: 1.0.0
 Authors@R:
     person("Timothy", "Shen", , "tzshen@g.ucla.edu", role = c("aut", "cre"))
-Description: An interpretable random-forest feature selection framework for
+Description: An interpretable network-aware random-forest feature selection framework for
     high-dimensional and correlated data. Combines recursive feature elimination,
-    WGCNA-style module detection, and shadow-stability selection backed by exact
-    TreeSHAP values. A Python environment with scikit-learn, shap, and numpy is
+    WGCNA, and shadow-stability selection through TreeSHAP values. A Python environment with 	scikit-learn, shap, and numpy is
     required; configure it with sf_setup().
 Imports:
     reticulate (>= 1.35),
