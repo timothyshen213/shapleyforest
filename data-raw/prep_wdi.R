@@ -9,8 +9,8 @@
 # general audience while posing the same challenge as genomic panels.
 #
 # Saves a single list `wdi` to data/, with elements:
-#   wdi$X      — 180 × 544 numeric matrix (World Bank indicators, 2020)
-#   wdi$y      — numeric vector length 180 (life expectancy at birth, years)
+#   wdi$X      — 181 × 501 numeric matrix (World Bank indicators, 2020)
+#   wdi$y      — numeric vector length 181 (life expectancy at birth, years)
 #   wdi$labels — named chr: indicator code -> human-readable indicator name
 if (!requireNamespace("WDI", quietly = TRUE))        install.packages("WDI")
 if (!requireNamespace("data.table", quietly = TRUE)) install.packages("data.table")
@@ -51,8 +51,13 @@ y_all <- mat[, TARGET]
 
 # ── Feature filter ──────────────────────────────────────────────────────────────
 keep_ind <- colMeans(!is.na(mat)) >= IND_COVER
-# drop tautological life-expectancy-at-birth series (total/male/female) from X
-keep_ind[grep("^SP[.]DYN[.]LE00", colnames(mat))] <- FALSE
+# Drop tautological life-table-derived series (life expectancy, mortality,
+# survival, deaths). These are mechanically part of the outcome, not
+# independent predictors — matched on the human-readable indicator name.
+lab_name  <- setNames(labels$name, labels$code)
+taut_rx   <- "life expectancy|mortalit|surviv|death|dying|stillbirth|perinatal|health pillar"
+taut_code <- names(lab_name)[grepl(taut_rx, lab_name, ignore.case = TRUE)]
+keep_ind[colnames(mat) %in% taut_code] <- FALSE
 X <- mat[, keep_ind, drop = FALSE]
 
 # ── Country filter: has target + enough retained indicators ─────────────────────

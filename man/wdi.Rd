@@ -7,13 +7,14 @@
 \format{
 A list with three elements:
 \describe{
-\item{X}{A numeric matrix with 180 rows (countries) and 544 columns —
+\item{X}{A numeric matrix with 181 rows (countries) and 501 columns —
 World Bank development indicators for 2020, filtered to those present
 for at least 80\\% of countries and with residual gaps median-imputed.
 Row names are country short names.}
-\item{y}{A numeric vector of length 180: life expectancy at birth
-(total, in years).  All life-expectancy-at-birth series were removed
-from \code{X} to avoid tautological prediction.}
+\item{y}{A numeric vector of length 181: life expectancy at birth
+(total, in years).  All life-table-derived series (life expectancy,
+mortality, survival, and death counts) were removed from \code{X} to
+avoid tautological prediction.}
 \item{labels}{A named character vector mapping each indicator code in
 \code{colnames(X)} to its human-readable World Bank indicator name.}
 }
@@ -28,7 +29,7 @@ data(wdi)
 }
 \description{
 A list containing World Bank development indicators and life expectancy for
-180 countries in 2020.  Unlike the other bundled datasets — which are all
+181 countries in 2020.  Unlike the other bundled datasets — which are all
 gene-expression panels — this is a non-biological, genuinely
 high-dimensional (p > n), and highly-correlated tabular dataset.  It is
 included to demonstrate Shapley Forest on data whose features (GDP per
