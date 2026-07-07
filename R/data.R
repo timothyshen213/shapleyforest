@@ -78,32 +78,37 @@ NULL
 #'   2771–2778. \doi{10.1182/blood-2003-09-3243}
 NULL
 
-#' Ames Housing Sale Prices
+#' World Development Indicators (2020)
 #'
-#' A list containing numeric property attributes and sale prices for 2930
-#' residential homes sold in Ames, Iowa (2006-2010).  Unlike the other bundled
-#' datasets — which are all gene-expression panels — this is a non-biological,
-#' high-dimensional, and highly-correlated tabular dataset.  It is included to
-#' demonstrate Shapley Forest on data whose features (square footage, room
-#' counts, garage size, year built, ...) are intuitive to a general audience,
-#' while still posing the same challenge: many correlated, partially redundant
-#' measurements competing to explain the outcome.
+#' A list containing World Bank development indicators and life expectancy for
+#' 180 countries in 2020.  Unlike the other bundled datasets — which are all
+#' gene-expression panels — this is a non-biological, genuinely
+#' high-dimensional (p > n), and highly-correlated tabular dataset.  It is
+#' included to demonstrate Shapley Forest on data whose features (GDP per
+#' capita, literacy rate, CO2 emissions, urban population share, ...) are
+#' intuitive to a general audience, while still posing the same challenge as
+#' genomic data: many more correlated, partially redundant measurements than
+#' observations competing to explain the outcome.
 #'
 #' @docType data
 #' @keywords datasets
-#' @name housing
-#' @usage data(housing)
-#' @format A list with two elements:
+#' @name wdi
+#' @usage data(wdi)
+#' @format A list with three elements:
 #' \describe{
-#'   \item{X}{A numeric matrix with 2930 rows (homes) and 33 columns —
-#'     numeric property attributes such as lot size, square footage, room
-#'     and bathroom counts, year built/remodelled, garage and porch areas,
-#'     and sale-location coordinates.}
-#'   \item{y}{A numeric vector of length 2930: the sale price in US dollars.}
+#'   \item{X}{A numeric matrix with 180 rows (countries) and 544 columns —
+#'     World Bank development indicators for 2020, filtered to those present
+#'     for at least 80\% of countries and with residual gaps median-imputed.
+#'     Row names are country short names.}
+#'   \item{y}{A numeric vector of length 180: life expectancy at birth
+#'     (total, in years).  All life-expectancy-at-birth series were removed
+#'     from \code{X} to avoid tautological prediction.}
+#'   \item{labels}{A named character vector mapping each indicator code in
+#'     \code{colnames(X)} to its human-readable World Bank indicator name.}
 #' }
-#' @source The \code{ames} dataset from the \pkg{modeldata} package.  See
-#'   \code{data-raw/prep_housing.R} for the exact preprocessing steps.
-#' @references De Cock, D. (2011). Ames, Iowa: Alternative to the Boston
-#'   Housing Data as an End of Semester Regression Project. \emph{Journal of
-#'   Statistics Education}, 19(3). \doi{10.1080/10691898.2011.11889627}
+#' @source The World Development Indicators bulk database
+#'   (\url{https://databank.worldbank.org/}).  See \code{data-raw/prep_wdi.R}
+#'   for the exact download and preprocessing steps.
+#' @references World Bank. \emph{World Development Indicators}. Washington, DC:
+#'   The World Bank Group.
 NULL
