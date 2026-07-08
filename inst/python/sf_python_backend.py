@@ -542,9 +542,14 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
     counts  = np.zeros(p, dtype=np.float64)
     n_valid = 0
 
-    rng = np.random.default_rng(int(seed))
+    # Per-bootstrap deterministic seeds (order-independent). Mirrors the
+    # shapleyforest_py package so the two implementations stay matched.
+    boot_seeds = np.random.SeedSequence(int(seed)).generate_state(int(n_boots))
 
     for b in range(int(n_boots)):
+        boot_seed = int(boot_seeds[b])
+        rng = np.random.default_rng(boot_seed)
+
         idx = rng.choice(n, size=n // 2, replace=False)
         X_real_sub = X_pool[idx, :]
         y_sub      = y[idx]
@@ -552,20 +557,17 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
         if classification and len(np.unique(y_sub)) < 2:
             continue
 
-        # ── build shadow matrix: permute each column independently ────────────
-        X_shadow_sub = np.empty_like(X_real_sub)
-        for col in range(p):
-            perm = rng.permutation(n // 2)
-            X_shadow_sub[:, col] = X_real_sub[perm, col]
+        # ── build shadow matrix: permute each column independently (C-level) ──
+        n_sub = X_real_sub.shape[0]
+        X_aug = np.empty((n_sub, 2 * p), dtype=X_pool.dtype)
+        X_aug[:, :p] = X_real_sub
+        X_aug[:, p:] = rng.permuted(X_real_sub, axis=0)
+        n_aug = 2 * p
 
-        X_aug = np.concatenate([X_real_sub, X_shadow_sub], axis=1)
-        n_aug = X_aug.shape[1]   # 2p
-
-        sub_seed = (int(seed) + b * 7919) % (2**31 - 1)
         mtry_aug = _compute_mtry(n_aug, mtry_factor, classification)
         ntree    = _compute_ntree(n_aug, ntree_factor, min_ntree)
 
-        rf = _build_rf(ntree, mtry_aug, int(nodesize), sub_seed, n_jobs, classification)
+        rf = _build_rf(ntree, mtry_aug, int(nodesize), boot_seed, n_jobs, classification)
         try:
             rf.fit(X_aug, y_sub.astype(int) if classification else y_sub.astype(float))
         except Exception:
