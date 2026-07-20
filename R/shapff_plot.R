@@ -878,3 +878,67 @@ plot_elbow.shapley_forest <- function(object,
   plot(p)
   invisible(p)
 }
+
+
+#' Plot Directional (Signed) Feature Importance for a Shapley Forest Object
+#'
+#' Diverging bar chart of signed importance = direction \eqn{\times} mean|SHAP|.
+#' Magnitude is mean|SHAP|; the sign is the global effect direction, taken from
+#' the Spearman correlation between each feature's value and its SHAP value
+#' (\code{mean(signed SHAP)} \eqn{\approx 0} because contributions cancel, so it
+#' is unusable for direction). Bars to the right promote the outcome, to the left
+#' suppress it. Features whose direction is ambiguous (non-monotone:
+#' \eqn{|\rho| < 0.1}) are greyed — a single direction is misleading for those.
+#'
+#' @param object    A \code{shapley_forest} object.
+#' @param pos_color Bar colour for positive direction. Default \code{"#d6604d"}.
+#' @param neg_color Bar colour for negative direction. Default \code{"#4393c3"}.
+#' @param amb_color Bar colour for ambiguous features. Default \code{"#bbbbbb"}.
+#' @param main      Plot title. Default \code{"Directional feature importance"}.
+#' @param ...       Ignored.
+#'
+#' @return A \code{ggplot2} object (invisibly).
+#' @import ggplot2
+#' @export
+plot_signed_importance <- function(object, ...) {
+  UseMethod("plot_signed_importance")
+}
+
+#' @describeIn plot_signed_importance Signed-importance plot for a
+#'   \code{shapley_forest} object.
+#' @export
+plot_signed_importance.shapley_forest <- function(object,
+                                                  pos_color = "#d6604d",
+                                                  neg_color = "#4393c3",
+                                                  amb_color = "#bbbbbb",
+                                                  main = "Directional feature importance",
+                                                  ...) {
+  df <- object$final_SHAP
+  if (is.null(df) || !("signed_importance" %in% names(df)) || nrow(df) == 0L)
+    stop("No directional SHAP data found. Refit with sf() (Python backend).")
+
+  df <- df[order(abs(df$signed_importance)), , drop = FALSE]
+  df$feature_name <- factor(df$feature_name, levels = df$feature_name)
+  df$fill_grp <- ifelse(df$direction_ambiguous, "ambiguous",
+                 ifelse(df$signed_importance >= 0, "positive", "negative"))
+
+  signed_importance <- feature_name <- fill_grp <- NULL  # R CMD check
+
+  p <- ggplot(df, aes(x = signed_importance, y = feature_name, fill = fill_grp)) +
+    geom_col() +
+    geom_vline(xintercept = 0, linewidth = 0.4) +
+    scale_fill_manual(
+      values = c(positive = pos_color, negative = neg_color, ambiguous = amb_color),
+      breaks = c("positive", "negative", "ambiguous"),
+      labels = c("promotes (+)", "suppresses (−)", "ambiguous"),
+      name   = NULL
+    ) +
+    labs(x = "Signed importance  (direction × mean |SHAP|)",
+         y = NULL, title = main) +
+    theme_minimal(base_size = 13) +
+    theme(plot.title = element_text(size = 14, hjust = 0.5),
+          legend.position = "bottom")
+
+  print(p)
+  invisible(p)
+}

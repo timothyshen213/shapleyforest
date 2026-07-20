@@ -318,6 +318,8 @@ sf <- function(X, y,
       as.numeric(unlist(select_py$shap_matrix)),
       nrow     = nrow(X_surv),
       ncol     = n_stable,
+      byrow    = TRUE,   # Python .tolist() is row-major; fill by row to preserve
+                         # per-observation alignment (else the matrix is scrambled)
       dimnames = list(NULL, stable_features)
     )
   } else {
@@ -330,6 +332,7 @@ sf <- function(X, y,
       as.numeric(unlist(select_py$interaction_matrix)),
       nrow     = n_stable,
       ncol     = n_stable,
+      byrow    = TRUE,   # row-major from Python (symmetric, but keep consistent)
       dimnames = list(stable_features, stable_features)
     )
     m
@@ -437,6 +440,25 @@ sf <- function(X, y,
     shap_final_list$ci_lower_signed  <- round(mean_signed[feat_ord] - 1.96 * se_signed[feat_ord], 4L)
     shap_final_list$ci_upper_signed  <- round(mean_signed[feat_ord] + 1.96 * se_signed[feat_ord], 4L)
     shap_final_list$stability_freq   <- round(stability_freq_vec[feat_ord],                    4L)
+
+    # ── global effect direction: Spearman(feature value, SHAP value) ──────────
+    # Mean signed SHAP ~ 0 (contributions cancel); direction lives in how a
+    # feature's SHAP tracks its value. Spearman is rank-based (captures monotone
+    # direction without assuming linearity). |rho| < 0.1 flags non-monotone /
+    # ambiguous direction (a single sign is misleading — use a dependence plot).
+    val_ord  <- final_X[, valid_cols, drop = FALSE]
+    dir_corr <- vapply(seq_along(valid_cols), function(k) {
+      xj <- as.numeric(val_ord[[k]]); sj <- shap_ord[, k]
+      if (stats::sd(xj) == 0 || stats::sd(sj) == 0) return(0)
+      cc <- suppressWarnings(stats::cor(xj, sj, method = "spearman"))
+      if (is.na(cc)) 0 else cc
+    }, numeric(1L))
+    names(dir_corr) <- valid_cols
+    direction <- sign(dir_corr)
+    shap_final_list$direction           <- as.integer(direction[feat_ord])
+    shap_final_list$dir_corr            <- round(dir_corr[feat_ord], 4L)
+    shap_final_list$signed_importance   <- round(direction[feat_ord] * mean_abs[feat_ord], 4L)
+    shap_final_list$direction_ambiguous <- abs(dir_corr[feat_ord]) < 0.1
   }
 
   runtime$Final_RF <- (proc.time() - t0)["elapsed"]
