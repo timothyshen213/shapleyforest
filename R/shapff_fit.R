@@ -177,6 +177,7 @@ sf <- function(X, y,
     mtry_factor        = sc$mtry_factor,
     ntree_factor       = as.numeric(sc$ntree_factor),
     min_ntree          = as.integer(sc$min_ntree),
+    mtry_rule          = sc$mtry_rule,
     nodesize           = as.integer(nodesize),
     classification     = CLASSIFICATION,
     seed               = as.integer(seed),
@@ -255,10 +256,8 @@ sf <- function(X, y,
     y                       = y_py,
     feature_names_surv      = as.list(colnames(X_surv)),
     module_assignments_surv = as.list(as.character(module_assigns_ordered)),
-    module_names_ev         = as.list(names(module_ev)),
-    module_scores_ev        = as.list(as.numeric(module_ev)),
     drop_fraction           = sl$drop_fraction,
-    number_selected         = sl$number_selected,
+    number_selected         = 1L,
     mtry_factor             = sl$mtry_factor,
     ntree_factor            = as.numeric(sl$ntree_factor),
     min_ntree               = as.integer(sl$min_ntree),
@@ -269,33 +268,22 @@ sf <- function(X, y,
     max_modsize             = as.integer(max_modsize),
     n_boots                 = as.integer(sl$n_boots),
     pi_thr                  = as.numeric(sl$pi_thr),
-    evidence_min_pct        = as.numeric(sl$evidence_min_pct),
-    indep_modules           = if (!is.null(sl$indep_modules))
-                                as.list(sl$indep_modules) else NULL,
     shadow_mode             = sl$shadow_mode,
     shadow_percentile       = as.numeric(sl$shadow_percentile),
     pi_thr_indep            = if (!is.null(sl$pi_thr_indep))
                                 as.numeric(sl$pi_thr_indep) else NULL,
-    k_corr_pool             = if (!is.null(sl$k_corr_pool))
-                                as.integer(sl$k_corr_pool) else NULL,
-    k_ind_pool              = if (!is.null(sl$k_ind_pool))
-                                as.integer(sl$k_ind_pool) else NULL,
-    ind_selection_mode      = sl$ind_selection_mode,
+    threshold_mode          = sl$threshold_mode,
+    mtry_rule               = sl$mtry_rule,
+    mtry_on_real            = as.logical(sl$mtry_on_real),
+    early_stop_boots        = as.logical(sl$early_stop_boots),
+    early_stop_tol          = as.numeric(sl$early_stop_tol),
+    early_stop_check_every  = as.integer(sl$early_stop_check_every),
+    indep_modules           = if (!is.null(sl$indep_modules))
+                                as.list(sl$indep_modules) else NULL,
     use_dml_residual        = as.logical(sl$use_dml_residual),
     dml_n_folds             = as.integer(sl$dml_n_folds),
     dml_ntree               = as.integer(sl$dml_ntree),
     dml_scope               = sl$dml_scope,
-    dual_pass2              = as.logical(sl$dual_pass2),
-    k_ind_pass2             = if (!is.null(sl$k_ind_pass2))
-                                as.integer(sl$k_ind_pass2) else NULL,
-    ind_bypass_pass2        = as.logical(sl$ind_bypass_pass2),
-    use_interventional_shap = as.logical(sl$use_interventional_shap),
-    interventional_bg_size  = as.integer(sl$interventional_bg_size),
-    split_mode              = sl$split_mode,
-    split_pct_select        = as.numeric(sl$split_pct_select),
-    c_corr                  = as.integer(sl$c_corr),
-    use_rfe_trim            = as.logical(sl$use_rfe_trim),
-    null_floor_adjust       = as.logical(sl$null_floor_adjust),
     verbose                 = as.logical(verbose >= 2L)
   )
 
@@ -384,10 +372,13 @@ sf <- function(X, y,
 
   final_X    <- X[, stable_features, drop = FALSE]
   current_p  <- ncol(final_X)
-  final_mtry <- if (CLASSIFICATION)
-    min(ceiling(sl$mtry_factor * current_p / 3L), current_p)
-  else
-    min(ceiling(sl$mtry_factor * sqrt(current_p)), current_p)
+  final_mtry <- {
+    base <- switch(sl$mtry_rule,
+      sqrt     = sqrt(current_p),
+      p_over_3 = current_p / 3,
+      if (CLASSIFICATION) current_p / 3 else sqrt(current_p))   # "auto"
+    min(ceiling(sl$mtry_factor * base), current_p)
+  }
 
   final_rf <- ranger::ranger(
     x             = final_X,

@@ -18,7 +18,13 @@ select_control(
   use_dml_residual = FALSE,
   dml_n_folds = 5L,
   dml_ntree = 300L,
-  dml_scope = "indep"
+  dml_scope = "indep",
+  mtry_rule = "auto",
+  mtry_on_real = FALSE,
+  threshold_mode = "pi_thr",
+  early_stop_boots = FALSE,
+  early_stop_tol = 0.01,
+  early_stop_check_every = 10L
 )
 }
 \arguments{
@@ -74,6 +80,33 @@ Default \code{300}.}
 \code{"all_modules"} applies per-module DML to
 every module (removes the contribution of all other
 modules before that module's stability run).}
+
+\item{mtry_rule}{How \code{mtry} is derived from the feature count.
+One of \code{"auto"} (default), \code{"sqrt"},
+\code{"p_over_3"}. See \code{\link{screen_control}}.}
+
+\item{mtry_on_real}{Logical. If \code{TRUE}, \code{mtry} on the augmented
+\eqn{[real | shadow]} matrix is \code{2 * rule(p_real)}
+so real-feature sampling is not diluted by the shadows.
+A statistical correction, not a speed-up.
+Default \code{FALSE}.}
+
+\item{threshold_mode}{Selection cutoff rule. \code{"pi_thr"} (default) uses
+the fixed \code{pi_thr} for the correlated pool and
+elbow detection for the independent pool;
+\code{"elbow"} applies the adaptive elbow rule to
+\emph{both} pools.}
+
+\item{early_stop_boots}{Logical. If \code{TRUE}, stop the bootstrap loop once
+selection frequencies converge. Default \code{FALSE}.}
+
+\item{early_stop_tol}{Convergence tolerance for \code{early_stop_boots}:
+stop when the largest change in any feature's
+frequency between batches falls below this.
+Default \code{0.01}.}
+
+\item{early_stop_check_every}{Bootstraps per batch; convergence is checked
+between batches. Default \code{10}.}
 }
 \value{
 An object of class \code{select_control}.

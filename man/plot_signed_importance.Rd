@@ -9,6 +9,8 @@ plot_signed_importance(object, ...)
 
 \method{plot_signed_importance}{shapley_forest}(
   object,
+  top_n = 20L,
+  labels = NULL,
   pos_color = "#d6604d",
   neg_color = "#4393c3",
   amb_color = "#bbbbbb",
@@ -20,6 +22,15 @@ plot_signed_importance(object, ...)
 \item{object}{A \code{shapley_forest} object.}
 
 \item{...}{Ignored.}
+
+\item{top_n}{Show only the \code{top_n} features with the largest
+\eqn{|}signed importance\eqn{|}. Default \code{20L}; use \code{NULL} or
+\code{Inf} to plot every stable feature.}
+
+\item{labels}{Optional named character vector mapping feature names (as in
+\code{final_SHAP$feature_name}) to human-readable labels for the axis, e.g.
+a gene-symbol or indicator-name lookup. Names not found are left unchanged.
+Default \code{NULL} (show the raw feature names).}
 
 \item{pos_color}{Bar colour for positive direction. Default \code{"#d6604d"}.}
 

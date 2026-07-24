@@ -891,6 +891,13 @@ plot_elbow.shapley_forest <- function(object,
 #' \eqn{|\rho| < 0.1}) are greyed — a single direction is misleading for those.
 #'
 #' @param object    A \code{shapley_forest} object.
+#' @param top_n     Show only the \code{top_n} features with the largest
+#'   \eqn{|}signed importance\eqn{|}. Default \code{20L}; use \code{NULL} or
+#'   \code{Inf} to plot every stable feature.
+#' @param labels    Optional named character vector mapping feature names (as in
+#'   \code{final_SHAP$feature_name}) to human-readable labels for the axis, e.g.
+#'   a gene-symbol or indicator-name lookup. Names not found are left unchanged.
+#'   Default \code{NULL} (show the raw feature names).
 #' @param pos_color Bar colour for positive direction. Default \code{"#d6604d"}.
 #' @param neg_color Bar colour for negative direction. Default \code{"#4393c3"}.
 #' @param amb_color Bar colour for ambiguous features. Default \code{"#bbbbbb"}.
@@ -908,6 +915,8 @@ plot_signed_importance <- function(object, ...) {
 #'   \code{shapley_forest} object.
 #' @export
 plot_signed_importance.shapley_forest <- function(object,
+                                                  top_n     = 20L,
+                                                  labels    = NULL,
                                                   pos_color = "#d6604d",
                                                   neg_color = "#4393c3",
                                                   amb_color = "#bbbbbb",
@@ -917,7 +926,18 @@ plot_signed_importance.shapley_forest <- function(object,
   if (is.null(df) || !("signed_importance" %in% names(df)) || nrow(df) == 0L)
     stop("No directional SHAP data found. Refit with sf() (Python backend).")
 
+  # Keep the top_n features by |signed importance| (largest effect either way)
+  if (!is.null(top_n) && is.finite(top_n) && nrow(df) > top_n)
+    df <- df[order(-abs(df$signed_importance)), , drop = FALSE][seq_len(top_n), , drop = FALSE]
+
   df <- df[order(abs(df$signed_importance)), , drop = FALSE]
+
+  # Annotate: swap raw feature names for human-readable labels where supplied
+  if (!is.null(labels)) {
+    mapped <- unname(labels[as.character(df$feature_name)])
+    df$feature_name <- ifelse(is.na(mapped), as.character(df$feature_name), mapped)
+  }
+
   df$feature_name <- factor(df$feature_name, levels = df$feature_name)
   df$fill_grp <- ifelse(df$direction_ambiguous, "ambiguous",
                  ifelse(df$signed_importance >= 0, "positive", "negative"))

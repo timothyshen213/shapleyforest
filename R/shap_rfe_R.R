@@ -142,10 +142,7 @@
 
   current_p  <- ncol(final_X)
   final_mtry <- if (current_p > 0L) {
-    if (CLASSIFICATION)
-      min(ceiling(sl$mtry_factor * current_p / 3L), current_p)
-    else
-      min(ceiling(sl$mtry_factor * sqrt(current_p)), current_p)
+    .compute_mtry_R(current_p, sl$mtry_factor, CLASSIFICATION, sl$mtry_rule)
   } else 1L
 
   # Always fit with permutation importance so variable.importance is available
@@ -432,6 +429,25 @@
 }
 
 
+# ── mtry rule (mirrors the Python package / backend) ─────────────────────────
+.compute_mtry_R <- function(n_features, mtry_factor, classification,
+                             rule = "auto") {
+  base <- switch(rule,
+    sqrt     = sqrt(n_features),
+    p_over_3 = n_features / 3,
+    if (classification) n_features / 3 else sqrt(n_features))   # "auto"
+  max(1L, min(ceiling(mtry_factor * base), n_features))
+}
+
+# mtry on the augmented [real | shadow] matrix (2 * p_real cols)
+.compute_mtry_aug_R <- function(p_real, mtry_factor, classification,
+                                 rule = "auto", on_real = FALSE) {
+  n_aug <- 2L * p_real
+  if (isTRUE(on_real))
+    return(max(1L, min(2L * .compute_mtry_R(p_real, mtry_factor, classification, rule), n_aug)))
+  .compute_mtry_R(n_aug, mtry_factor, classification, rule)
+}
+
 .apply_stable_threshold_R <- function(names_sorted, freqs_sorted,
                                        pi_thr, use_elbow = FALSE) {
   if (length(names_sorted) == 0L)
@@ -483,7 +499,7 @@
       cp      <- length(current_feats)
       n_trees <- max(as.integer(sc$min_ntree),
                      as.integer(sc$ntree_factor * cp))
-      mtry_r  <- max(1L, min(ceiling(sc$mtry_factor * sqrt(cp)), cp))
+      mtry_r  <- .compute_mtry_R(cp, sc$mtry_factor, CLASSIFICATION, sc$mtry_rule)
 
       rf_step <- ranger::ranger(
         x             = X_mod[, current_feats, drop = FALSE],
@@ -508,7 +524,7 @@
     cp      <- length(current_feats)
     n_trees <- max(as.integer(sc$min_ntree),
                    as.integer(sc$ntree_factor * cp))
-    mtry_r  <- max(1L, min(ceiling(sc$mtry_factor * sqrt(cp)), cp))
+    mtry_r  <- .compute_mtry_R(cp, sc$mtry_factor, CLASSIFICATION, sc$mtry_rule)
 
     rf_fin <- ranger::ranger(
       x             = X_mod[, current_feats, drop = FALSE],
@@ -588,7 +604,9 @@
       cat(sprintf("  Shadow stability — pool '%s' (%d features, %d boots) ...\n",
                   pool_nm, np, sl$n_boots))
 
-    freq_map <- setNames(integer(np), pool_feats)
+    freq_map   <- setNames(integer(np), pool_feats)
+    prev_freqs <- NULL
+    n_done     <- 0L
 
     for (b in seq_len(sl$n_boots)) {
       bseed <- seed + b * 97L
@@ -607,7 +625,8 @@
       cp_aug  <- ncol(Xb_aug)
       n_trees <- max(as.integer(sl$min_ntree),
                      as.integer(sl$ntree_factor * cp_aug))
-      mtry_r  <- max(1L, min(ceiling(sl$mtry_factor * sqrt(cp_aug)), cp_aug))
+      mtry_r  <- .compute_mtry_aug_R(np, sl$mtry_factor, CLASSIFICATION,
+                                     sl$mtry_rule, sl$mtry_on_real)
 
       rf_b <- ranger::ranger(
         x             = Xb_aug,
@@ -629,13 +648,24 @@
       shad_thr <- stats::quantile(shad_vim, probs = shadow_pct, na.rm = TRUE)
       winners  <- pool_feats[!is.na(real_vim) & real_vim > shad_thr]
       freq_map[winners] <- freq_map[winners] + 1L
+      n_done <- n_done + 1L
+
+      # adaptive early stopping: halt once frequencies have converged
+      if (isTRUE(sl$early_stop_boots) &&
+          (b %% as.integer(sl$early_stop_check_every)) == 0L) {
+        cur_freqs <- freq_map / n_done
+        if (!is.null(prev_freqs) &&
+            max(abs(cur_freqs - prev_freqs)) < as.numeric(sl$early_stop_tol)) break
+        prev_freqs <- cur_freqs
+      }
     }
 
-    freqs_raw <- freq_map / sl$n_boots
+    freqs_raw <- freq_map / max(1L, n_done)
     ord       <- order(freqs_raw, decreasing = TRUE)
     names_s   <- pool_feats[ord]
     freqs_s   <- freqs_raw[ord]
 
+    if (identical(sl$threshold_mode, "elbow")) use_elbow_pool <- TRUE
     res <- .apply_stable_threshold_R(names_s, freqs_s,
                                       sl$pi_thr,
                                       use_elbow = use_elbow_pool)

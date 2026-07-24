@@ -10,6 +10,11 @@
 #' @param mtry_factor    Multiplier applied to \eqn{\sqrt{p}} to derive
 #'                       \code{mtry} for each screening random forest.
 #'                       Default \code{1}.
+#' @param mtry_rule      How \code{mtry} is derived from the feature count
+#'                       \code{p}. \code{"auto"} (default) uses \code{p/3} for
+#'                       classification and \code{sqrt(p)} for regression (the
+#'                       historical rule); \code{"sqrt"} uses \code{sqrt(p)} for
+#'                       both; \code{"p_over_3"} uses \code{p/3} for both.
 #' @param min_ntree      Minimum number of trees per screening forest.
 #'                       Default \code{500}.
 #' @param ntree_factor   Trees per forest = \code{max(p * ntree_factor, min_ntree)}.
@@ -21,14 +26,18 @@
 screen_control <- function(drop_fraction = 0.25,
                             keep_fraction = 0.50,
                             mtry_factor   = 1,
+                            mtry_rule     = "auto",
                             min_ntree     = 500L,
-                            ntree_factor  = 1L) {
+                            ntree_factor  = 1) {
+  mtry_rule <- match.arg(mtry_rule, c("auto", "sqrt", "p_over_3"))
+  if (ntree_factor <= 0) stop("ntree_factor must be > 0", call. = FALSE)
   obj <- list(
     drop_fraction = as.numeric(drop_fraction),
     keep_fraction = as.numeric(keep_fraction),
     mtry_factor   = as.numeric(mtry_factor),
+    mtry_rule     = mtry_rule,
     min_ntree     = as.integer(min_ntree),
-    ntree_factor  = as.integer(ntree_factor)
+    ntree_factor  = as.numeric(ntree_factor)
   )
   class(obj) <- "screen_control"
   obj
@@ -80,6 +89,28 @@ screen_control <- function(drop_fraction = 0.25,
 #'                           every module (removes the contribution of all other
 #'                           modules before that module's stability run).
 #'
+#' @param mtry_rule        How \code{mtry} is derived from the feature count.
+#'                         One of \code{"auto"} (default), \code{"sqrt"},
+#'                         \code{"p_over_3"}. See \code{\link{screen_control}}.
+#' @param mtry_on_real     Logical. If \code{TRUE}, \code{mtry} on the augmented
+#'                         \eqn{[real | shadow]} matrix is \code{2 * rule(p_real)}
+#'                         so real-feature sampling is not diluted by the shadows.
+#'                         A statistical correction, not a speed-up.
+#'                         Default \code{FALSE}.
+#' @param threshold_mode   Selection cutoff rule. \code{"pi_thr"} (default) uses
+#'                         the fixed \code{pi_thr} for the correlated pool and
+#'                         elbow detection for the independent pool;
+#'                         \code{"elbow"} applies the adaptive elbow rule to
+#'                         \emph{both} pools.
+#' @param early_stop_boots Logical. If \code{TRUE}, stop the bootstrap loop once
+#'                         selection frequencies converge. Default \code{FALSE}.
+#' @param early_stop_tol   Convergence tolerance for \code{early_stop_boots}:
+#'                         stop when the largest change in any feature's
+#'                         frequency between batches falls below this.
+#'                         Default \code{0.01}.
+#' @param early_stop_check_every Bootstraps per batch; convergence is checked
+#'                         between batches. Default \code{10}.
+#'
 #' @return An object of class \code{select_control}.
 #' @export
 #' @seealso \code{\link{screen_control}}, \code{\link{sf}}
@@ -96,21 +127,31 @@ select_control <- function(drop_fraction    = 0.10,
                             use_dml_residual = FALSE,
                             dml_n_folds      = 5L,
                             dml_ntree        = 300L,
-                            dml_scope        = "indep") {
+                            dml_scope        = "indep",
+                            mtry_rule        = "auto",
+                            mtry_on_real     = FALSE,
+                            threshold_mode   = "pi_thr",
+                            early_stop_boots = FALSE,
+                            early_stop_tol   = 0.01,
+                            early_stop_check_every = 10L) {
 
-  shadow_mode <- match.arg(shadow_mode, c("split", "within_module"))
-  dml_scope   <- match.arg(dml_scope,   c("indep", "all_modules"))
+  shadow_mode    <- match.arg(shadow_mode,    c("split", "within_module"))
+  dml_scope      <- match.arg(dml_scope,      c("indep", "all_modules"))
+  mtry_rule      <- match.arg(mtry_rule,      c("auto", "sqrt", "p_over_3"))
+  threshold_mode <- match.arg(threshold_mode, c("pi_thr", "elbow"))
+  if (ntree_factor <= 0) stop("ntree_factor must be > 0", call. = FALSE)
 
   obj <- list(
     drop_fraction     = as.numeric(drop_fraction),
-    number_selected   = 1L,          # placeholder; no K-trim in current version
     mtry_factor       = as.numeric(mtry_factor),
+    mtry_rule         = mtry_rule,
+    mtry_on_real      = as.logical(mtry_on_real),
     min_ntree         = as.integer(min_ntree),
-    ntree_factor      = as.integer(ntree_factor),
+    ntree_factor      = as.numeric(ntree_factor),
     n_boots           = as.integer(n_boots),
     pi_thr            = as.numeric(pi_thr),
     pi_thr_indep      = if (is.null(pi_thr_indep)) NULL else as.numeric(pi_thr_indep),
-    evidence_min_pct  = 50,
+    threshold_mode    = threshold_mode,
     shadow_mode       = shadow_mode,
     shadow_percentile = as.numeric(shadow_percentile),
     indep_modules     = if (is.null(indep_modules)) NULL else as.character(indep_modules),
@@ -118,21 +159,9 @@ select_control <- function(drop_fraction    = 0.10,
     dml_n_folds       = as.integer(dml_n_folds),
     dml_ntree         = as.integer(dml_ntree),
     dml_scope         = dml_scope,
-    # internal/legacy — kept for interface compatibility
-    split_mode           = "k",
-    split_pct_select     = 0.25,
-    c_corr               = 3L,
-    use_rfe_trim         = TRUE,
-    null_floor_adjust    = FALSE,
-    k_corr_pool          = NULL,
-    k_ind_pool           = NULL,
-    ind_selection_mode   = "shadow",
-    dual_pass2           = FALSE,
-    k_ind_pass2          = NULL,
-    ind_bypass_pass2     = FALSE,
-    use_interventional_shap = FALSE,
-    interventional_bg_size  = 100L,
-    percent_flag         = FALSE
+    early_stop_boots  = as.logical(early_stop_boots),
+    early_stop_tol    = as.numeric(early_stop_tol),
+    early_stop_check_every = as.integer(early_stop_check_every)
   )
   class(obj) <- "select_control"
   obj

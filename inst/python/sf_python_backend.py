@@ -172,48 +172,6 @@ def _shap_mean_abs(rf, X, classification):
     return np.mean(sv, axis=0)   # shape (2p,) when called with augmented X
 
 
-def _shap_mean_abs_interventional(rf, X, X_bg, classification):
-    """
-    Mean-|SHAP| using INTERVENTIONAL feature perturbation (Janzing 2020).
-
-    Out-of-coalition features are integrated against the marginal distribution
-    represented by X_bg, breaking the dependence chains that observational
-    TreeSHAP would otherwise propagate through correlated features.  Cost is
-    ~O(n_bg * trees) per explanation rather than the tree-path shortcut, so we
-    keep X_bg small (defaults at the call site).
-
-    Falls back to the default (observational) explainer if the interventional
-    path raises (older shap versions, dtype issues, etc.).
-    """
-    import shap
-    try:
-        explainer = shap.TreeExplainer(
-            rf, data=X_bg, feature_perturbation="interventional"
-        )
-        shap_raw = explainer.shap_values(X, check_additivity=False)
-    except Exception as e:
-        print(f"interventional SHAP failed ({type(e).__name__}: {e}); "
-              f"falling back to observational TreeSHAP")
-        return _shap_mean_abs(rf, X, classification)
-
-    if isinstance(shap_raw, list):
-        if classification and len(rf.classes_) == 2:
-            sv = np.abs(shap_raw[1])
-        elif classification:
-            sv = np.mean([np.abs(s) for s in shap_raw], axis=0)
-        else:
-            sv = np.abs(shap_raw[0])
-    else:
-        if shap_raw.ndim == 3:
-            if classification and len(rf.classes_) == 2:
-                sv = np.abs(shap_raw[:, :, 1])
-            else:
-                sv = np.mean(np.abs(shap_raw), axis=2)
-        else:
-            sv = np.abs(shap_raw)
-
-    return np.mean(sv, axis=0)
-
 
 def _shap_interaction_matrix(rf, X, classification):
     """
@@ -293,11 +251,34 @@ def _permutation_importance(rf):
     return rf.feature_importances_
 
 
-def _compute_mtry(n_features, mtry_factor, classification):
-    if classification:
-        return min(max(1, math.ceil(mtry_factor * n_features / 3)), n_features)
+def _compute_mtry(n_features, mtry_factor, classification, rule="auto"):
+    """
+    Features considered per split.
+      rule="auto"     - p/3 (classification) / sqrt(p) (regression)  [historical]
+      rule="sqrt"     - sqrt(p) for both
+      rule="p_over_3" - p/3 for both
+    """
+    if rule == "sqrt":
+        base = math.sqrt(n_features)
+    elif rule == "p_over_3":
+        base = n_features / 3.0
     else:
-        return min(max(1, math.ceil(mtry_factor * math.sqrt(n_features))), n_features)
+        base = (n_features / 3.0) if classification else math.sqrt(n_features)
+    return min(max(1, math.ceil(mtry_factor * base)), n_features)
+
+
+def _compute_mtry_augmented(p_real, mtry_factor, classification,
+                            rule="auto", on_real=False):
+    """
+    mtry on the augmented [real | shadow] matrix (2*p_real cols).
+      on_real=False - mtry = rule(2p)          [historical]
+      on_real=True  - mtry = 2 * rule(p_real)  [keeps real-feature sampling
+                      undiluted by the shadows; statistical, not a speedup]
+    """
+    n_aug = 2 * p_real
+    if on_real:
+        return min(max(1, 2 * _compute_mtry(p_real, mtry_factor, classification, rule)), n_aug)
+    return _compute_mtry(n_aug, mtry_factor, classification, rule)
 
 
 def _compute_ntree(n_features, ntree_factor, min_ntree):
@@ -346,7 +327,7 @@ def _find_elbow_idx(freqs_sorted):
 def _rfe_loop(X_mod, feat_names, y, target,
               drop_fraction, mtry_factor, ntree_factor, min_ntree,
               nodesize, classification, seed, n_jobs, use_shap=True,
-              shap_bg=None):
+              shap_bg=None, mtry_rule="auto"):
     """
     shap_bg : ndarray (n_bg, p_full) or None
         If provided AND use_shap, switches the SHAP call to interventional
@@ -366,19 +347,14 @@ def _rfe_loop(X_mod, feat_names, y, target,
 
     while len(current_names) >= target:
         n_cur = len(current_names)
-        mtry  = _compute_mtry(n_cur, mtry_factor, classification)
+        mtry  = _compute_mtry(n_cur, mtry_factor, classification, mtry_rule)
         ntree = _compute_ntree(n_cur, ntree_factor, min_ntree)
 
         rf = _build_rf(ntree, mtry, int(nodesize), seed, n_jobs, classification)
         rf.fit(current_X, y.astype(int) if classification else y.astype(float))
 
         if use_shap:
-            if current_bg is not None:
-                vim = _shap_mean_abs_interventional(
-                    rf, current_X, current_bg, classification
-                )
-            else:
-                vim = _shap_mean_abs(rf, current_X, classification)
+            vim = _shap_mean_abs(rf, current_X, classification)
         else:
             vim = _permutation_importance(rf)
 
@@ -425,7 +401,8 @@ def _rfe_loop(X_mod, feat_names, y, target,
 
 def _blockwise_reduce(X_mod, feat_names, y, max_block_size, keep_fraction,
                       drop_fraction, mtry_factor, ntree_factor, min_ntree,
-                      nodesize, classification, seed, n_jobs, use_shap=True):
+                      nodesize, classification, seed, n_jobs, use_shap=True,
+                      mtry_rule="auto"):
     feat_names = list(feat_names)
     rng = np.random.default_rng(seed)
 
@@ -444,7 +421,8 @@ def _blockwise_reduce(X_mod, feat_names, y, max_block_size, keep_fraction,
             surv_b, _, _, _ = _rfe_loop(
                 X_blk, names_blk, y, target_blk,
                 drop_fraction, mtry_factor, ntree_factor, min_ntree,
-                nodesize, classification, seed, n_jobs, use_shap
+                nodesize, classification, seed, n_jobs, use_shap,
+                mtry_rule=mtry_rule
             )
             name_to_orig = {feat_names[i]: i for i in block}
             kept_cols.extend([name_to_orig[f] for f in surv_b])
@@ -460,45 +438,6 @@ def _blockwise_reduce(X_mod, feat_names, y, max_block_size, keep_fraction,
 # Pass-2 RFE trim  (identical to v12 — plain SHAP ranking)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _rfe_trim_to_k(stable_candidates, freq_map_all,
-                   X_surv_mat, feature_names_surv,
-                   y, K, drop_fraction, mtry_factor, ntree_factor, min_ntree,
-                   nodesize, classification, seed, n_jobs, use_shap,
-                   shap_bg_full=None):
-    """
-    Pass-2: SHAP RFE on the stable candidate set -> exactly K features.
-    Falls back to freq-ranked ordering when |candidates| <= K.
-    """
-    if len(stable_candidates) <= K:
-        sorted_feats = sorted(stable_candidates,
-                              key=lambda f: freq_map_all.get(f, 0.0),
-                              reverse=True)
-        vims = [freq_map_all.get(f, 0.0) for f in sorted_feats]
-        # single "step": the stable set itself
-        return sorted_feats, vims, [(sorted_feats, vims)]
-
-    cand_names = sorted(stable_candidates,
-                        key=lambda f: freq_map_all.get(f, 0.0),
-                        reverse=True)
-
-    name_to_col = {f: i for i, f in enumerate(feature_names_surv)}
-    valid_pairs = [(f, name_to_col[f]) for f in cand_names if f in name_to_col]
-    if not valid_pairs:
-        return [], [], []
-
-    cand_names_v, cand_cols = zip(*valid_pairs)
-    cand_cols_l = list(cand_cols)
-    X_cand = X_surv_mat[:, cand_cols_l]
-    bg_cand = shap_bg_full[:, cand_cols_l] if shap_bg_full is not None else None
-
-    survivors, survivor_vims, _, all_steps = _rfe_loop(
-        X_cand, list(cand_names_v), y, K,
-        drop_fraction, mtry_factor, ntree_factor, min_ntree,
-        nodesize, classification, seed, n_jobs, use_shap,
-        shap_bg=bg_cand,
-    )
-    return survivors, survivor_vims, all_steps
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # v14 CORE: shadow-feature stability selection on one feature pool
@@ -508,7 +447,10 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
                               n_boots,
                               mtry_factor, ntree_factor, min_ntree,
                               nodesize, classification, seed, n_jobs,
-                              use_shap=True, shadow_percentile=95):
+                              use_shap=True, shadow_percentile=95,
+                              mtry_rule="auto", mtry_on_real=False,
+                              early_stop_boots=False, early_stop_tol=0.01,
+                              early_stop_check_every=10):
     """
     Shadow-feature stability selection on a single feature pool.
 
@@ -545,6 +487,7 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
     # Per-bootstrap deterministic seeds (order-independent). Mirrors the
     # shapleyforest_py package so the two implementations stay matched.
     boot_seeds = np.random.SeedSequence(int(seed)).generate_state(int(n_boots))
+    _prev_freqs = [None]   # early-stopping state
 
     for b in range(int(n_boots)):
         boot_seed = int(boot_seeds[b])
@@ -564,7 +507,8 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
         X_aug[:, p:] = rng.permuted(X_real_sub, axis=0)
         n_aug = 2 * p
 
-        mtry_aug = _compute_mtry(n_aug, mtry_factor, classification)
+        mtry_aug = _compute_mtry_augmented(p, mtry_factor, classification,
+                                           mtry_rule, mtry_on_real)
         ntree    = _compute_ntree(n_aug, ntree_factor, min_ntree)
 
         rf = _build_rf(ntree, mtry_aug, int(nodesize), boot_seed, n_jobs, classification)
@@ -593,7 +537,13 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
         counts[selected_b] += 1.0
         n_valid += 1
 
-        pass  # boot progress suppressed in release
+        # adaptive early stopping: halt once frequencies have converged
+        if early_stop_boots and n_valid > 0 and (b + 1) % int(early_stop_check_every) == 0:
+            cur_freqs = counts / n_valid
+            if _prev_freqs[0] is not None and \
+               np.max(np.abs(cur_freqs - _prev_freqs[0])) < float(early_stop_tol):
+                break
+            _prev_freqs[0] = cur_freqs
 
     if n_valid == 0:
         return feat_names, [0.0] * p
@@ -606,88 +556,6 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
 
     return names_sorted, freqs_sorted
 
-
-def _quota_stability(X_pool, feat_names, y, k_top,
-                     n_boots,
-                     mtry_factor, ntree_factor, min_ntree,
-                     nodesize, classification, seed, n_jobs,
-                     use_shap=True):
-    """
-    v12_k-style quota stability: per bootstrap half-sample, count how many
-    times each feature appears in the top-k_top features by SHAP / VIM.
-    No shadow-null threshold — features compete only with each other.
-
-    This is more lenient than Boruta-shadow for pools with many weak-signal
-    features (e.g. independent modules): the shadow 95th-pct threshold can
-    approach the max of p null values, which is too stringent for features
-    that have weak but real effects.
-
-    Parameters
-    ----------
-    k_top : int
-        How many features to "select" per bootstrap (analogous to K in v12_k).
-        Typical use: set k_top = k_ind_pool (the target nomination quota).
-
-    Returns
-    -------
-    names_sorted : list[str]   all pool features, sorted by quota_freq descending
-    freqs_sorted : list[float] parallel selection frequencies  (in [0, 1])
-    """
-    feat_names = list(feat_names)
-    p          = X_pool.shape[1]
-    n          = X_pool.shape[0]
-    k_top      = min(max(1, int(k_top)), p)   # can't take more than p
-
-    if p == 0:
-        return [], []
-
-    counts  = np.zeros(p, dtype=np.float64)
-    n_valid = 0
-    rng     = np.random.default_rng(int(seed))
-
-    for b in range(int(n_boots)):
-        idx        = rng.choice(n, size=n // 2, replace=False)
-        X_sub      = X_pool[idx, :]
-        y_sub      = y[idx]
-
-        if classification and len(np.unique(y_sub)) < 2:
-            continue
-
-        sub_seed = (int(seed) + b * 7919) % (2**31 - 1)
-        mtry     = _compute_mtry(p, mtry_factor, classification)
-        ntree    = _compute_ntree(p, ntree_factor, min_ntree)
-
-        rf = _build_rf(ntree, mtry, int(nodesize), sub_seed, n_jobs, classification)
-        try:
-            rf.fit(X_sub, y_sub.astype(int) if classification else y_sub.astype(float))
-        except Exception:
-            continue
-
-        if use_shap:
-            try:
-                vim = _shap_mean_abs(rf, X_sub, classification)
-            except Exception:
-                vim = _permutation_importance(rf)
-        else:
-            vim = _permutation_importance(rf)
-
-        # top-k_top features by descending VIM (tie-breaking by position)
-        top_idx = np.argsort(vim)[::-1][:k_top]
-        counts[top_idx] += 1.0
-        n_valid += 1
-
-        pass  # boot progress suppressed in release
-
-    if n_valid == 0:
-        return feat_names, [0.0] * p
-
-    freqs = counts / n_valid
-    order = np.argsort(freqs)[::-1]
-
-    names_sorted = [feat_names[i] for i in order]
-    freqs_sorted = freqs[order].tolist()
-
-    return names_sorted, freqs_sorted
 
 
 def _apply_stable_threshold(names_sorted, freqs_sorted, pi_thr,
@@ -735,7 +603,7 @@ def run_screen_rfe(X_mat, y, feature_names, module_assignments, module_list,
                    drop_fraction, keep_fraction,
                    mtry_factor, ntree_factor, min_ntree,
                    nodesize, classification, seed, n_jobs, max_modsize,
-                   shap_model="full", verbose=True):
+                   shap_model="full", mtry_rule="auto", verbose=True):
     X_mat              = np.array(X_mat, dtype=np.float64)
     y                  = np.array(y).ravel()
     feature_names      = [str(f) for f in feature_names]
@@ -786,7 +654,8 @@ def run_screen_rfe(X_mat, y, feature_names, module_assignments, module_list,
             X_mod, feat_mod = _blockwise_reduce(
                 X_mod, feat_mod, y, max_modsize, 0.9,
                 drop_fraction, mtry_factor, ntree_factor, min_ntree,
-                nodesize, classification, seed, n_jobs, use_shap
+                nodesize, classification, seed, n_jobs, use_shap,
+                mtry_rule=mtry_rule
             )
             n_mod  = X_mod.shape[1]
             target = max(1, math.ceil(n_mod * keep_fraction))
@@ -794,7 +663,8 @@ def run_screen_rfe(X_mat, y, feature_names, module_assignments, module_list,
         survivors, vims, init_info, _ = _rfe_loop(
             X_mod, feat_mod, y, target,
             drop_fraction, mtry_factor, ntree_factor, min_ntree,
-            nodesize, classification, seed, n_jobs, use_shap
+            nodesize, classification, seed, n_jobs, use_shap,
+            mtry_rule=mtry_rule
         )
 
         all_survivor_features.append(survivors)
@@ -823,34 +693,30 @@ def run_screen_rfe(X_mat, y, feature_names, module_assignments, module_list,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_select_rfe(X_surv_mat, y, feature_names_surv,
-                   drop_fraction, number_selected,   # number_selected: ignored in v18 (no K trim)
+                   drop_fraction, number_selected,   # number_selected: ignored (no K trim)
                    mtry_factor, ntree_factor, min_ntree,
                    nodesize, classification, seed, n_jobs, max_modsize,
                    shap_model="full",
                    n_boots=50, pi_thr=0.60,
-                   compute_interactions=True,        # compute TreeSHAP interaction matrix
-                   # ── shadow args ───────────────────────────────────────────
+                   compute_interactions=True,
+                   # ── shadow / threshold ────────────────────────────────────
                    shadow_mode="split",        # "split" or "within_module"
                    shadow_percentile=95,
-                   pi_thr_indep=None,          # None = elbow; float = fixed threshold
-                   # ── v18: DML corr residualization for ind pool (optional) ───
-                   use_dml_residual=False,     # strip corr contribution before ind stability
-                   dml_n_folds=5,              # K-fold cross-fitting folds
-                   dml_ntree=300,              # trees per fold-RF
-                   dml_scope="indep",          # "indep" (default) or "all_modules"
+                   pi_thr_indep=None,          # None = elbow; float = fixed
+                   threshold_mode="pi_thr",    # "pi_thr" or "elbow"
+                   # ── mtry ──────────────────────────────────────────────────
+                   mtry_rule="auto", mtry_on_real=False,
+                   # ── adaptive bootstrap stopping ───────────────────────────
+                   early_stop_boots=False, early_stop_tol=0.01,
+                   early_stop_check_every=10,
+                   # ── DML ───────────────────────────────────────────────────
+                   use_dml_residual=False,
+                   dml_n_folds=5,
+                   dml_ntree=300,
+                   dml_scope="indep",
                    # ── group info ────────────────────────────────────────────
                    module_assignments_surv=None,
                    indep_modules=None,
-                   # ── legacy args accepted but ignored ──────────────────────
-                   evidence_min_pct=50,
-                   module_names_ev=None, module_scores_ev=None,
-                   split_mode="k", split_pct_select=0.25,
-                   c_corr=3, use_rfe_trim=True,
-                   null_floor_adjust=False,
-                   k_corr_pool=None, k_ind_pool=None,
-                   ind_selection_mode="shadow",
-                   dual_pass2=False, k_ind_pass2=None, ind_bypass_pass2=False,
-                   use_interventional_shap=False, interventional_bg_size=100,
                    verbose=True):
     """
     v18 selection: shadow stability -> stable union -> single-shot joint TreeSHAP.
@@ -901,13 +767,9 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     pi_thr              = float(pi_thr)
     shadow_mode         = str(shadow_mode).lower()
     shadow_percentile   = float(shadow_percentile)
-    use_rfe_trim        = bool(use_rfe_trim)
-    use_interventional_shap = bool(use_interventional_shap)
-    interventional_bg_size  = int(interventional_bg_size)
-    ind_selection_mode  = str(ind_selection_mode).lower()
-    if ind_selection_mode not in ("shadow", "quota"):
-        raise ValueError(f"ind_selection_mode must be 'shadow' or 'quota', "
-                         f"got '{ind_selection_mode}'")
+    threshold_mode      = str(threshold_mode).lower()
+    if threshold_mode not in ("pi_thr", "elbow"):
+        raise ValueError(f"threshold_mode must be 'pi_thr' or 'elbow', got '{threshold_mode}'")
     use_dml_residual    = bool(use_dml_residual)
     dml_n_folds         = max(2, int(dml_n_folds))
     dml_ntree           = max(10, int(dml_ntree))
@@ -943,13 +805,8 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     else:
         y = y.astype(np.float64)
 
-    # ── blockwise pre-reduction if survivor pool is very large ───────────────
-    if X_surv_mat.shape[1] > max_modsize:
-        X_surv_mat, feature_names_surv = _blockwise_reduce(
-            X_surv_mat, feature_names_surv, y, max_modsize, 0.9,
-            drop_fraction, mtry_factor, ntree_factor, min_ntree,
-            nodesize, classification, seed, n_jobs, use_shap
-        )
+    # (Phase-2 blockwise pre-reduction removed by design - the full survivor
+    #  pool goes straight into shadow stability.)
 
     # ── Phase 2a: DML corr residualization  (v17 new) ────────────────────────
     # Compute y_resid ONCE, before the mode branches, using all corr survivors.
@@ -1018,10 +875,19 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
             n_jobs           = n_jobs,
             use_shap         = use_shap,
             shadow_percentile= shadow_percentile,
+            mtry_rule        = mtry_rule,
+            mtry_on_real     = mtry_on_real,
+            early_stop_boots = early_stop_boots,
+            early_stop_tol   = early_stop_tol,
+            early_stop_check_every = early_stop_check_every,
         )
         freq_map = dict(zip(names_sort, freqs_sort))
         # ── threshold: corr -> pi_thr; ind -> elbow (or pi_thr_indep) ─────────
-        if is_indep:
+        if threshold_mode == "elbow":
+            stable, threshold, elbow_rank = _apply_stable_threshold(
+                names_sort, freqs_sort, pi_thr, use_elbow=True, label=label
+            )
+        elif is_indep:
             use_elbow = (pi_thr_indep is None)
             thr       = pi_thr_indep if not use_elbow else pi_thr  # pi_thr unused when elbow
             stable, threshold, elbow_rank = _apply_stable_threshold(
@@ -1034,11 +900,6 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
                 use_elbow=False, label=label
             )
         return names_sort, freq_map, stable, threshold, freqs_sort, elbow_rank
-
-    # Dual-pool intermediate tracking (populated only when shadow_mode=="dual_pool")
-    _dual_corr_nominees = []
-    _dual_ind_nominees  = []
-    _dual_ind_steps     = []
 
     # ─────────────────────────────────────────────────────────────────────────
     # MODE A: "split" — corr pool vs ind pool
@@ -1184,136 +1045,6 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
 
             stable_union = list(set(stable_union))
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # MODE C: "dual_pool" — separate corr/ind nomination, single joint final
-    # ─────────────────────────────────────────────────────────────────────────
-    elif shadow_mode == "dual_pool":
-        if indep_set and name_to_mod:
-            corr_idx  = [i for i, f in enumerate(feature_names_surv)
-                         if name_to_mod.get(f, "") not in indep_set]
-            indep_idx = [i for i, f in enumerate(feature_names_surv)
-                         if name_to_mod.get(f, "") in indep_set]
-        else:
-            corr_idx  = list(range(len(feature_names_surv)))
-            indep_idx = []
-
-        pool_stability = []   # dual_pool mode: not visualised
-        # ── corr pool: always shadow stability ───────────────────────────────
-        _, freq_corr, stable_corr, _tc, _fc, _ec = _shadow_on_cols(
-            corr_idx, "corr [dual]", seed_offset=0, is_indep=False)
-        freq_map_all = dict(freq_corr)   # will be updated with ind freqs below
-
-        # ── corr nominees: top k_corr_pool by stability frequency ────────────
-        corr_sorted   = sorted(stable_corr,
-                               key=lambda f: freq_corr.get(f, 0.0), reverse=True)
-        corr_nominees = corr_sorted[:k_corr_pool]
-        if verbose: print(f"corr nominees: top {k_corr_pool} of {len(stable_corr)} "
-              f"stable corr features")
-
-        # ── ind nominees: "shadow" (SHAP RFE on stable_indep) or "quota" ────────
-        if ind_selection_mode == "shadow":
-            # run ind shadow stability only in shadow mode
-            _, freq_indep, stable_indep, _ti, _fi, _ei = _shadow_on_cols(
-                indep_idx, "indep [dual]", seed_offset=1, is_indep=True)
-            freq_map_all.update(freq_indep)
-            # --- existing shadow path: SHAP RFE on stable_indep -> k_ind_pool ---
-            if len(stable_indep) == 0:
-                ind_nominees  = []
-                ind_rfe_steps = []
-                if verbose: print(f"ind pool: no stable features - skipping ind RFE")
-            elif len(stable_indep) <= k_ind_pool:
-                ind_nominees  = list(stable_indep)
-                ind_rfe_steps = [(sorted(stable_indep,
-                                         key=lambda f: freq_indep.get(f, 0.0),
-                                         reverse=True),
-                                  [freq_indep.get(f, 0.0) for f in stable_indep])]
-                if verbose: print(f"ind nominees (shadow): {len(ind_nominees)} "
-                      f"(≤ k_ind_pool={k_ind_pool}, no RFE needed)")
-            else:
-                if verbose: print(f"ind nominees (shadow): SHAP RFE on {len(stable_indep)} "
-                      f"stable ind features -> {k_ind_pool}")
-                ind_bg = None
-                if use_shap and use_interventional_shap:
-                    n_rows = X_surv_mat.shape[0]
-                    bg_n   = min(int(interventional_bg_size), n_rows)
-                    rng_bg = np.random.default_rng(int(seed) + 9973 + 1)
-                    bg_idx = rng_bg.choice(n_rows, size=bg_n, replace=False)
-                    ind_bg = X_surv_mat[bg_idx, :]
-                ind_nominees, _, ind_rfe_steps = _rfe_trim_to_k(
-                    stable_indep, freq_indep,
-                    X_surv_mat, feature_names_surv,
-                    y, k_ind_pool,
-                    drop_fraction, mtry_factor, ntree_factor, min_ntree,
-                    nodesize, classification, seed + 1, n_jobs, use_shap,
-                    shap_bg_full=ind_bg,
-                )
-
-        else:
-            # --- quota path: v12_k-style top-k_ind_pool counting (no shadow null) ---
-            # Run quota stability on ALL ind-pool survivors from screening.
-            # Each bootstrap: count features in top k_ind_pool by SHAP.
-            # Apply pi_thr_indep (or elbow) threshold on quota frequencies.
-            ind_rfe_steps = []   # no RFE steps for quota path
-
-            if len(indep_idx) == 0:
-                ind_nominees = []
-                if verbose: print("ind pool (quota): no ind features - skipping")
-            else:
-                X_ind = X_surv_mat[:, indep_idx]
-                ind_feat_names = [feature_names_surv[i] for i in indep_idx]
-                if verbose: print(f"ind pool (quota): running quota stability on "
-                      f"{len(ind_feat_names)} ind features, k_top={k_ind_pool}, "
-                      f"n_boots={n_boots}"
-                      + (" [y=y_resid]" if use_dml_residual else ""))
-                q_names, q_freqs = _quota_stability(
-                    X_pool         = X_ind,
-                    feat_names     = ind_feat_names,
-                    y              = y_for_ind,   # v17: y_resid when DML enabled
-                    k_top          = k_ind_pool,
-                    n_boots        = n_boots,
-                    mtry_factor    = mtry_factor,
-                    ntree_factor   = ntree_factor,
-                    min_ntree      = min_ntree,
-                    nodesize       = nodesize,
-                    classification = classification,
-                    seed           = seed + 1,
-                    n_jobs         = n_jobs,
-                    use_shap       = use_shap,
-                )
-                # update freq_map_all with quota frequencies for ind features
-                freq_map_all.update(dict(zip(q_names, q_freqs)))
-                # freq_indep is now quota-based for threshold / reporting
-                freq_indep = dict(zip(q_names, q_freqs))
-
-                # apply same threshold logic as shadow path
-                use_elbow_q = (pi_thr_indep is None)
-                thr_q       = pi_thr_indep if not use_elbow_q else pi_thr
-                stable_indep_q, _tq, _eq = _apply_stable_threshold(
-                    q_names, q_freqs, thr_q,
-                    use_elbow=use_elbow_q, label="ind [quota]"
-                )
-                if verbose: print(f"ind nominees (quota): {len(stable_indep_q)} "
-                      f"features above threshold")
-
-                # ind_nominees = stable_indep_q, capped at k_ind_pool by quota freq
-                ind_nominees = sorted(
-                    stable_indep_q,
-                    key=lambda f: freq_indep.get(f, 0.0), reverse=True
-                )[:k_ind_pool]
-                if verbose: print(f"ind nominees (quota): taking top {len(ind_nominees)} "
-                      f"of {len(stable_indep_q)} stable quota features")
-
-        # ── combined pool: corr nominees ∪ ind nominees ───────────────────────
-        stable_union = list(set(corr_nominees) | set(ind_nominees))
-        if verbose: print(f"combined nominees: {len(corr_nominees)} corr + "
-              f"{len(ind_nominees)} ind = {len(stable_union)} unique  "
-              f"(target final K={K})")
-
-        # Store the dual-stage intermediate info for selection_list
-        _dual_corr_nominees = corr_nominees
-        _dual_ind_nominees  = ind_nominees
-        _dual_ind_steps     = ind_rfe_steps
-
     else:
         raise ValueError(f"shadow_mode must be 'split' or 'within_module', "
                          f"got '{shadow_mode}'")
@@ -1356,7 +1087,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     X_stable     = X_surv_mat[:, stable_cols]
 
     ntree_s = _compute_ntree(n_stable, ntree_factor, min_ntree)
-    mtry_s  = _compute_mtry(n_stable, mtry_factor, classification)
+    mtry_s  = _compute_mtry(n_stable, mtry_factor, classification, mtry_rule)
     if verbose: print(f"Fitting single RF: n_stable={n_stable}  ntree={ntree_s}  mtry={mtry_s}")
 
     rf_stable = _build_rf(ntree_s, mtry_s, nodesize,

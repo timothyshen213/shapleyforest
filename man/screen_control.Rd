@@ -8,8 +8,9 @@ screen_control(
   drop_fraction = 0.25,
   keep_fraction = 0.5,
   mtry_factor = 1,
+  mtry_rule = "auto",
   min_ntree = 500L,
-  ntree_factor = 1L
+  ntree_factor = 1
 )
 }
 \arguments{
@@ -22,6 +23,12 @@ screening. Default \code{0.50}.}
 \item{mtry_factor}{Multiplier applied to \eqn{\sqrt{p}} to derive
 \code{mtry} for each screening random forest.
 Default \code{1}.}
+
+\item{mtry_rule}{How \code{mtry} is derived from the feature count
+\code{p}. \code{"auto"} (default) uses \code{p/3} for
+classification and \code{sqrt(p)} for regression (the
+historical rule); \code{"sqrt"} uses \code{sqrt(p)} for
+both; \code{"p_over_3"} uses \code{p/3} for both.}
 
 \item{min_ntree}{Minimum number of trees per screening forest.
 Default \code{500}.}
