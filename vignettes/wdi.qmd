@@ -1,0 +1,1138 @@
+---
+title: "ShapleyForest on Real Data:  World Development Indicators"
+author: "Timothy Shen"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: false
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+vignette: >
+  %\VignetteIndexEntry{Shapley Forest on Real Data: World Development Indicators}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
+```
+
+# Introduction
+
+This vignette demonstrates the full Shapley Forest (SF) workflow on the
+**World Development Indicators (WDI)** dataset from the World Bank. Unlike the
+gene-expression panels used in the other vignettes, this is a **non-biological,
+genuinely high-dimensional ($p > n$) tabular dataset** whose features are
+intuitive to a general audience — GDP per capita, literacy rate, CO₂ emissions,
+urban population share, and hundreds of other national statistics. The task is
+to predict a country's **life expectancy at birth** from its development
+profile.
+
+The dataset is deliberately in the same regime as genomics: **501 indicators
+for only 181 countries**. Many indicators are strongly correlated (a country
+rich on one economic axis tends to be rich on many), so — exactly as with
+co-expressed genes — a model can "explain" the outcome with almost any one of a
+redundant block as a stand-in for the others. SF's screening + shadow-stability
+machinery exists to cut through blocks like this.
+
+The vignette is separated in four stages:
+
+1. Data loading and summary
+2. WGCNA
+3. Single SF run and output for exploration purposes
+4. Nested cross-validation comparing all six SF variants with joint
+   hyperparameter tuning
+
+---
+
+# Data
+
+We first load the data (included in the package).
+
+```{r packages}
+#| warning: false
+#| message: false
+
+if (!require("devtools", quietly = TRUE))
+    install.packages("devtools")
+library(devtools)
+devtools::install_github("timothyzshen/shapleyforest")
+
+library(shapleyforest)
+library(WGCNA)
+```
+
+```{r data}
+data(wdi)
+
+wdi_X      <- as.data.frame(wdi$X)
+wdi_y      <- wdi$y
+wdi_labels <- wdi$labels   # indicator code -> human-readable name
+
+cat("Countries :", nrow(wdi_X), "\n")
+cat("Indicators:", ncol(wdi_X), "\n")
+cat("Outcome   : life expectancy at birth,",
+    paste(round(range(wdi_y), 1), collapse = " - "), "years\n")
+```
+
+```{r results-cache, echo=FALSE}
+sf_cache <- if (file.exists("wdi_results.rds")) readRDS("wdi_results.rds") else NULL
+```
+
+We have a $181 \times 501$ matrix — more features than observations — where the
+outcome is a continuous quantity (years of life expectancy). This is a
+regression problem, so throughout we score models by **out-of-sample $R^2$**
+(and RMSE in years) rather than the AUC used in the classification vignettes.
+
+## Feature correlation structure
+
+Before fitting anything it is worth seeing *why* this is a hard selection
+problem: most of these indicators move together. Rather than an unreadable
+$501 \times 501$ heatmap, we summarise the redundancy directly — the
+distribution of absolute pairwise **Spearman** (rank) correlations among all
+indicators. We use Spearman rather than Pearson because development indicators
+are heavily skewed (GDP, population, and land area span orders of magnitude) and
+often related monotonically but non-linearly; a rank correlation captures those
+associations that raw Pearson understates.
+
+```{r cor-hist}
+#| fig-cap: "Distribution of absolute pairwise Spearman correlations among the 501 indicators. The right tail marks blocks of mutually-redundant features — exactly the structure SF is designed to navigate."
+library(ggplot2)
+
+cor_mat <- cor(wdi_X, method = "spearman")
+off_diag <- abs(cor_mat[upper.tri(cor_mat)])
+
+ggplot(data.frame(r = off_diag), aes(x = r)) +
+  geom_histogram(bins = 40, fill = "#1F77B4", colour = "white") +
+  geom_vline(xintercept = 0.7, linetype = "dashed", colour = "tomato") +
+  labs(title    = "Pairwise redundancy among indicators",
+       subtitle = sprintf("%.1f%% of pairs have |rho| > 0.7",
+                          100 * mean(off_diag > 0.7)),
+       x = "Absolute Spearman correlation", y = "Number of indicator pairs") +
+  theme_bw()
+```
+
+---
+
+# WGCNA Module Detection
+
+Before running SF we perform WGCNA ourselves to build the network structure.
+`sf()` can run WGCNA internally, but doing it manually lets us select the
+parameters and inspect the modules before handing them off.
+
+```{r wgcna-load}
+options(stringsAsFactors = FALSE)
+enableWGCNAThreads()
+```
+
+## Rank-transform for the network
+
+WGCNA builds its network from pairwise correlations, so it inherits Pearson's
+weakness on skewed, non-linearly-related data. On the raw indicators this is
+severe: a Pearson-based network leaves ~80% of indicators unassigned, not
+because they lack structure but because their monotonic associations do not
+show up as high *linear* correlations. We therefore rank-transform every
+indicator before building the network — equivalent to using Spearman
+correlations — which recovers a rich, well-populated module structure. This
+transform is used **only** to define modules; SF itself is fit on the raw
+indicators (random forests are invariant to monotonic transforms, so this
+changes the module labels, not the model).
+
+```{r wgcna-rank}
+wdi_Xnet <- as.data.frame(lapply(wdi_X, rank))
+rownames(wdi_Xnet) <- rownames(wdi_X)
+```
+
+## Soft-threshold power selection
+
+WGCNA constructs a weighted co-expression-style network by raising pairwise
+correlations to a soft-thresholding power $\beta$. The chosen power should make
+the resulting network approximately **scale-free** ($R^2 \geq 0.8$) while
+keeping **mean connectivity** reasonably high. We use a **signed** network —
+the World Bank authors' recommended default for real data — so that
+positively- and negatively-associated indicators land in different modules.
+
+```{r soft-threshold, eval=FALSE}
+powers <- c(1:10, seq(12, 20, by = 2))
+
+sft <- pickSoftThreshold(
+  wdi_Xnet,
+  powerVector = powers,
+  networkType = "signed",
+  verbose     = 0
+)
+```
+
+```{r soft-threshold-plot, eval=FALSE}
+#| fig-width: 10
+#| fig-height: 4
+#| fig-cap: "Left: scale-free topology fit (R²) vs soft power. Right: mean network connectivity vs soft power. Choose the lowest power where R² ≥ 0.8 (dashed line)."
+
+par(mfrow = c(1, 2), mar = c(5, 5, 3, 1))
+
+plot(sft$fitIndices[, 1],
+     -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+     xlab = "Soft-threshold power (β)",
+     ylab = expression(paste("Scale-free topology fit R"^2)),
+     main = "Scale-free fit",
+     type = "n", ylim = c(0, 1))
+abline(h = 0.8, lty = 2, col = "tomato", lwd = 1.5)
+text(sft$fitIndices[, 1],
+     -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+     labels = powers, col = "#1F77B4", cex = 0.9, font = 2)
+
+plot(sft$fitIndices[, 1],
+     sft$fitIndices[, 5],
+     xlab = "Soft-threshold power (β)",
+     ylab = "Mean connectivity",
+     main = "Mean connectivity",
+     type = "n")
+text(sft$fitIndices[, 1],
+     sft$fitIndices[, 5],
+     labels = powers, col = "#D62728", cex = 0.9, font = 2)
+```
+
+Signed networks need roughly double the power of unsigned ones to reach
+scale-free topology; we choose **β = 10**, the lowest power where $R^2$ reaches
+0.8 while mean connectivity is still distinguishable from zero.
+
+## Module detection and dendrogram
+
+```{r wgcna-modules, eval=FALSE}
+SOFT_POWER <- 6L
+
+net <- blockwiseModules(
+  wdi_Xnet,
+  power             = SOFT_POWER,
+  networkType       = "signed",
+  TOMType           = "signed",
+  minModuleSize     = 10L,
+  mergeCutHeight    = 0.25,
+  deepSplit         = 2,
+  numericLabels     = FALSE,
+  pamRespectsDendro = FALSE,
+  saveTOMs          = FALSE,
+  verbose           = 0
+)
+
+table(net$colors)   # grey = unassigned (treated as independent by SF)
+```
+
+```{r wgcna-dendro, eval=FALSE}
+#| fig-width: 12
+#| fig-height: 6
+#| fig-cap: "Indicator dendrogram with module colour bar. Grey = unassigned features — these form the independent pool in SF's split shadow mode."
+
+plotDendroAndColors(
+  net$dendrograms[[1]],
+  net$colors[net$blockGenes[[1]]],
+  "Module",
+  dendroLabels = FALSE,
+  hang         = 0.03,
+  addGuide     = TRUE,
+  guideHang    = 0.05,
+  main         = "Indicator dendrogram and module colours"
+)
+p_dendro <- recordPlot()
+```
+
+```{r show-dendro, echo=FALSE}
+#| fig-width: 12
+#| fig-height: 6
+#| fig-cap: "Indicator dendrogram with module colour bar. Grey = unassigned features — these form the independent pool in SF's split shadow mode."
+if (!is.null(sf_cache) && !is.null(sf_cache$p_dendro))
+  print(sf_cache$p_dendro)
+```
+
+### Module membership summary
+
+```{r module-summary, eval=FALSE}
+mod_tbl <- as.data.frame(table(Module = net$colors))
+mod_tbl$Independent <- mod_tbl$Module == "grey"
+mod_tbl <- mod_tbl[order(mod_tbl$Freq, decreasing = TRUE), ]
+knitr::kable(mod_tbl, row.names = FALSE,
+             caption = "WGCNA module sizes (grey = independent pool).")
+```
+
+```{r show-module-summary, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$mod_tbl))
+  knitr::kable(sf_cache$mod_tbl, row.names = FALSE,
+               caption = "WGCNA module sizes (grey = independent pool).")
+```
+
+Grey-labelled indicators are **unassigned by WGCNA** and treated as the
+independent pool. On the rank-transformed network this pool is modest —
+roughly one indicator in seven — with the remaining ~85% falling into a handful
+of coherent modules (a macro-economic block, a health/sanitation block, a
+demographic block, and so on). It is worth appreciating how much the rank
+transform buys here: on the *raw* indicators a Pearson-based network stranded
+~80% of features in grey, purely because their monotonic associations do not
+register as high linear correlations. Rank-transforming before building the
+network turns the same data into a well-populated module structure without
+discarding a single indicator.
+
+The grey pool that remains is exactly the regime SF's split-shadow machinery is
+designed for: modular indicators are screened *within* their blocks (controlling
+for the redundancy inside each bundle), while the independent pool is judged
+against its own permuted shadows.
+
+### Eigengene-based connectivity (kME)
+
+Module eigengenes summarise each module's profile as a single representative
+vector. Correlating every indicator with each module eigengene gives its
+**module membership** ($k_{ME}$) — a continuous measure of how central an
+indicator is to that module, independent of where the dendrogram was cut.
+
+```{r kme, eval=FALSE}
+MEs <- net$MEs
+kME <- as.data.frame(signedKME(wdi_Xnet, MEs, outputColumnName = "kME"))
+
+gene_kME <- vapply(seq_along(net$colors), function(i) {
+  col <- paste0("kME", net$colors[i])
+  if (col %in% colnames(kME)) kME[i, col] else NA_real_
+}, numeric(1))
+```
+
+### Hub indicators
+
+Intramodular **hub indicators** are the features most strongly correlated with
+their module's eigengene ($k_{ME}$ near 1) — the ones that best represent their
+module's shared variation.
+
+```{r hub-genes, eval=FALSE}
+hub_df <- data.frame(
+  indicator = colnames(wdi_X),
+  label     = wdi_labels[colnames(wdi_X)],
+  module    = net$colors,
+  kME       = gene_kME,
+  stringsAsFactors = FALSE
+)
+hub_df <- hub_df[hub_df$module != "grey" & !is.na(hub_df$kME), ]
+
+top_hubs <- hub_df[order(-hub_df$kME), ][seq_len(min(20L, nrow(hub_df))), ]
+top_hubs_disp <- top_hubs[, c("label", "module", "kME")]
+knitr::kable(top_hubs_disp, row.names = FALSE,
+             caption = "Top 20 intramodular hub indicators by kME.")
+```
+
+```{r show-hubs, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$top_hubs_disp))
+  knitr::kable(sf_cache$top_hubs_disp, row.names = FALSE,
+               caption = "Top 20 intramodular hub indicators by kME.")
+```
+
+```{r hub-lollipop, eval=FALSE}
+#| fig-cap: "Top 20 intramodular hub indicators ranked by eigengene-based connectivity (kME), coloured by WGCNA module."
+library(ggplot2)
+
+p_hub <- ggplot(top_hubs, aes(x = reorder(label, kME), y = kME, colour = module)) +
+  geom_segment(aes(xend = label, y = 0, yend = kME), linewidth = 0.9) +
+  geom_point(size = 3) +
+  scale_colour_identity(guide = "legend", name = "Module",
+                        breaks = unique(top_hubs$module),
+                        labels = unique(top_hubs$module)) +
+  coord_flip() +
+  labs(title    = "Top intramodular hub indicators",
+       subtitle = "Ranked by eigengene-based connectivity (kME)",
+       x = NULL, y = expression(k[ME])) +
+  theme_bw()
+p_hub
+```
+
+```{r show-hub-lollipop, echo=FALSE}
+#| fig-cap: "Top 20 intramodular hub indicators ranked by eigengene-based connectivity (kME), coloured by WGCNA module."
+if (!is.null(sf_cache) && !is.null(sf_cache$p_hub)) print(sf_cache$p_hub)
+```
+
+### Final module membership (kME-refined)
+
+Hierarchical clustering can leave borderline indicators mis-assigned at the
+dendrogram cut. As a final refinement we reassign every indicator to the module
+whose eigengene it correlates with most strongly (its **maximum-kME module**).
+This refined membership — not the raw clustering output — is passed to SF.
+
+```{r module-membership, eval=FALSE}
+module_names <- sub("^kME", "", colnames(kME))
+best_module  <- module_names[max.col(as.matrix(kME), ties.method = "first")]
+
+module_membership <- best_module
+names(module_membership) <- colnames(wdi_X)
+
+# Recode grey (no strong eigengene correlation) → "independent" so SF
+# recognises the independent pool
+module_membership[module_membership == "grey"] <- "independent"
+
+membership_xtab <- as.data.frame.matrix(
+  table(clustering = net$colors, kME_refined = module_membership))
+knitr::kable(membership_xtab,
+             caption = "Dendrogram clustering vs kME-refined membership (row = clustering colour).")
+```
+
+```{r show-membership, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$membership_xtab))
+  knitr::kable(sf_cache$membership_xtab,
+               caption = "Dendrogram clustering vs kME-refined membership (row = clustering colour).")
+```
+
+This `module_membership` — computed here on **all** countries — is reused
+everywhere below: by the single SF run, and by every cross-validation fold and
+the final refit. WGCNA is **unsupervised** (built only from indicator–indicator
+correlations in `X`, never seeing `y`), so defining modules on the full matrix
+does **not** leak the outcome.
+
+---
+
+# Single SF Run
+
+We fit SF once on the full dataset using the module membership derived above
+and the **Python backend**, which provides exact TreeSHAP values plus an
+interaction matrix and is much faster than the pure-R fallback. This requires a
+Python environment with `scikit-learn`, `shap`, and `numpy` (see `?sf_setup`);
+configure it once per session with `sf_setup()`.
+
+```{r sf-setup, eval=FALSE}
+sf_setup()
+```
+
+```{r single-run, eval=FALSE}
+fit <- sf(
+  X = wdi_X,
+  y = wdi_y,
+  module_membership = module_membership,
+  backend = "python",
+  verbose = 1L,
+  seed = 2026
+)
+```
+
+## Stable set
+
+```{r stable-set, eval=FALSE}
+cat("Stable indicators selected:", length(fit$feature_list$feature_name), "\n")
+head(sort(fit$stability_freq, decreasing = TRUE), 20)
+```
+
+### Domain validation
+
+A stable set is only reassuring if it is *the right* set. As an
+annotation-free check, we compare it against the indicators that simply
+correlate most strongly with life expectancy on their own:
+
+1. **Rank agreement with a naive baseline** — do SF's top features by selection
+   importance line up with the indicators that have the largest absolute
+   Pearson correlation with life expectancy? Agreement means SF is recovering
+   the dominant development signal rather than fitting noise.
+2. **Recovery of the strongest univariate signal** — of the indicators most
+   correlated with the outcome, how many does the stable set capture?
+
+```{r domain-single, eval=FALSE}
+stable <- fit$feature_list$feature_name
+
+cors <- vapply(wdi_X, function(col) cor(col, wdi_y), numeric(1))
+
+top_imp <- head(fit$final_SHAP$feature_name[order(-fit$final_SHAP$variable_importance)], 15)
+top_c   <- names(sort(abs(cors), decreasing = TRUE))[1:15]
+cat("Overlap, top-15 SF-importance vs top-15 |cor| indicators:",
+    length(intersect(top_imp, top_c)), "/ 15\n")
+
+top_c30 <- names(sort(abs(cors), decreasing = TRUE))[1:30]
+cat("Top-30 |cor| indicators recovered in stable set:",
+    length(intersect(top_c30, stable)), "/ 30\n")
+```
+
+## Stability plot
+
+```{r plot-stability, eval=FALSE}
+#| fig-cap: "Shadow-win frequency per feature. Filled points exceed the stability threshold and enter the stable set."
+plot_stability(fit)
+```
+
+```{r show-stability, echo=FALSE}
+#| fig-cap: "Shadow-win frequency per feature. Filled points exceed the stability threshold and enter the stable set."
+if (!is.null(sf_cache)) print(sf_cache$p_stability)
+```
+
+The dashed horizontal line is the tuned `pi_thr`. The right panel shows the
+independent pool with its own elbow-detected threshold.
+
+## Feature importance
+
+```{r plot-importance, eval=FALSE}
+#| fig-cap: "Mean |SHAP| for the top 20 stable indicators."
+plot_importance(fit, top_n = 20)
+```
+
+```{r show-importance, echo=FALSE}
+#| fig-cap: "Mean |SHAP| for the top 20 stable indicators."
+if (!is.null(sf_cache)) print(sf_cache$p_importance)
+```
+
+---
+
+# Model Comparison: Three-Way Split + Cross-Validated Tuning
+
+## Design
+
+We compare **six SF variants** formed by two shadow modes × three DML options:
+
+| Variant | Shadow mode | DML |
+|---------|-------------|-----|
+| `split` | split | none |
+| `split_dml` | split | standard |
+| `split_mdml` | split | marginal |
+| `within` | within_module | none |
+| `within_dml` | within_module | standard |
+| `within_mdml` | within_module | marginal |
+
+We proceed with the following:
+
+0. **Modules from all data.** The WGCNA network / `module_membership` from the
+   section above (built on all countries) is reused throughout.
+1. **Vault a test set** (~20%) — held out once, scored once, at the very end.
+2. **On the remaining ~80% (train):** 5-fold CV tunes the hyperparameter grid
+   *and* compares the six variants on both performance (mean validation-fold
+   $R^2$) **and** stability (Nogueira $\hat{\Phi}$ of the stable set across
+   folds).
+3. **Select one variant** by a pre-specified rule (below), refit every variant
+   on the *full* train set, and report performance on the test set.
+
+Hyperparameters tuned jointly on the validation folds:
+
+| Parameter | Grid | Default |
+|-----------|------|---------|
+| `screen_control(drop_fraction)` | 0.25 (fixed) | 0.25 |
+| `select_control(drop_fraction)` | 0.05 (fixed) | 0.10 |
+| `select_control(pi_thr)` | 0.50, 0.60, 0.70 | 0.60 |
+| `min_ntree` (screen + select) | 500 (fixed) | 500 |
+| `n_boots` | 25 (fixed) | 50 |
+
+3 combinations per variant; within-variant tuning criterion **mean
+validation-fold $R^2$**. All other parameters stay at package defaults.
+
+**Selection rule (fixed in advance).** For each variant, hyperparameters are
+tuned by predictive $R^2$. Variant *selection* then uses the **Nogueira
+size-corrected stability index** $\hat{\Phi}$: among variants whose
+$\hat{\Phi}$ falls within one SE of the maximum, we choose the most
+**parsimonious** (smallest mean stable set size $\bar{k}$). Predictive
+performance is reported for reference but does not drive variant selection.
+
+## Setup
+
+```{r cv-load-pack}
+#| warning: false
+#| message: false
+
+library(caret)
+```
+
+```{r cv-setup, eval=FALSE}
+VARIANTS <- list(
+  split       = list(shadow_mode = "split",         use_dml_residual = FALSE, dml_scope = "indep"),
+  split_dml   = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "indep"),
+  split_mdml  = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "all_modules"),
+  within      = list(shadow_mode = "within_module", use_dml_residual = FALSE, dml_scope = "indep"),
+  within_dml  = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "indep"),
+  within_mdml = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "all_modules")
+)
+
+GRID <- expand.grid(
+  screen_drop = 0.25,
+  select_drop = 0.05,
+  pi_thr      = c(0.50, 0.60, 0.70),
+  stringsAsFactors = FALSE
+)
+
+# ── Three-way split ─────────────────────────────────────────────────────────
+# Vault ~20% as the held-out test set; the rest is train.
+set.seed(2026)
+trainval_idx <- as.integer(caret::createDataPartition(
+  wdi_y, p = 0.8, list = FALSE))
+test_idx     <- setdiff(seq_along(wdi_y), trainval_idx)
+
+X_tv   <- wdi_X[trainval_idx, ]; y_tv   <- wdi_y[trainval_idx]
+X_test <- wdi_X[test_idx, ];     y_test <- wdi_y[test_idx]
+
+# Validation role = 5-fold CV *within* train
+val_folds <- caret::createFolds(y_tv, k = 5, returnTrain = FALSE)
+
+cat(sprintf("Train: %d  |  Test vault: %d\n", length(y_tv), length(y_test)))
+```
+
+## Fit-and-evaluate helper
+
+```{r cv-helper, eval=FALSE}
+fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
+
+  sc  <- screen_control(
+    drop_fraction = grid_row$screen_drop,
+    min_ntree     = 500L
+  )
+  sl  <- select_control(
+    drop_fraction    = grid_row$select_drop,
+    pi_thr           = grid_row$pi_thr,
+    n_boots          = 25L,
+    min_ntree        = 100L,
+    shadow_mode      = variant$shadow_mode,
+    use_dml_residual = variant$use_dml_residual,
+    dml_scope        = variant$dml_scope
+  )
+
+  fit <- tryCatch(
+    sf(X_tr, y_tr,
+       module_membership = module_membership,
+       screen_params     = sc,
+       select_params     = sl,
+       backend           = "python",
+       seed              = 42L,
+       verbose           = 0L),
+    error = function(e) NULL
+  )
+
+  stable <- if (!is.null(fit)) fit$feature_list$feature_name else character(0)
+  if (length(stable) == 0L)
+    return(list(r2 = NA_real_, rmse = NA_real_,
+                n_stable = 0L, stable = character(0)))
+
+  rf   <- ranger::ranger(
+    y ~ ., num.trees = 300L, seed = 1L,
+    data = data.frame(y = y_tr, X_tr[, stable, drop = FALSE])
+  )
+  pred <- predict(rf, data.frame(X_te[, stable, drop = FALSE]))$predictions
+
+  sse <- sum((pred - y_te)^2)
+  sst <- sum((y_te - mean(y_te))^2)
+
+  list(
+    r2       = 1 - sse / sst,
+    rmse     = sqrt(mean((pred - y_te)^2)),
+    n_stable = length(stable),
+    stable   = stable
+  )
+}
+```
+
+## Smoke test
+
+The full tuning sweep is 6 variants × 3 grid rows × 5 validation folds (all
+sharing the one global `module_membership`, so no WGCNA re-runs). Before
+launching, verify that `fit_eval()` runs end-to-end on a couple of grid rows
+and a single train/test split.
+
+```{r cv-smoke-test, eval=FALSE}
+GRID_smoke <- GRID[1:2, ]
+print(GRID_smoke)
+
+set.seed(1)
+smoke_split <- caret::createFolds(wdi_y, k = 5, returnTrain = FALSE)[[1]]
+train_idx <- setdiff(seq_along(wdi_y), smoke_split)
+test_idx  <- smoke_split
+
+smoke_results <- lapply(seq_len(nrow(GRID_smoke)), function(g) {
+  fit_eval(wdi_X[train_idx, ], wdi_y[train_idx],
+           wdi_X[test_idx,  ], wdi_y[test_idx],
+           VARIANTS[["split"]], GRID_smoke[g, ])
+})
+
+data.frame(
+  grid_row = seq_len(nrow(GRID_smoke)),
+  r2       = vapply(smoke_results, `[[`, numeric(1), "r2"),
+  rmse     = vapply(smoke_results, `[[`, numeric(1), "rmse"),
+  n_stable = vapply(smoke_results, `[[`, numeric(1), "n_stable")
+)
+```
+
+If both rows return a finite `r2` and `n_stable > 0`, `fit_eval()` and `sf()`
+are wired correctly and it is safe to launch the full `tune` sweep below.
+
+## Cross-validated tuning and stability
+
+For each variant we sweep all 3 grid rows across the five validation folds,
+record each row's mean validation $R^2$, and lock the best-scoring row. At that
+locked setting we keep the per-fold stable sets, whose Nogueira $\hat{\Phi}$ is
+the variant's **stability**. Nothing here touches the test vault.
+
+```{r cv-tune, eval=FALSE}
+jac_fn <- function(a, b)
+  length(intersect(a, b)) / max(length(union(a, b)), 1L)
+
+tune_one <- function(vname) {
+  variant <- VARIANTS[[vname]]
+
+  grid_res <- lapply(seq_len(nrow(GRID)), function(g) {
+    per_fold <- lapply(seq_along(val_folds), function(fi) {
+      vi   <- val_folds[[fi]]
+      i_te <- vi; i_tr <- setdiff(seq_along(y_tv), vi)
+      r <- fit_eval(X_tv[i_tr, ], y_tv[i_tr],
+                    X_tv[i_te, ], y_tv[i_te],
+                    variant, GRID[g, ])
+      message(sprintf("[%s] g%02d fold%d — r2=%.3f n=%d",
+                      vname, g, fi, r$r2, r$n_stable))
+      r
+    })
+    list(
+      r2   = mean(vapply(per_fold, `[[`, numeric(1), "r2"), na.rm = TRUE),
+      r2s  = vapply(per_fold, `[[`, numeric(1), "r2"),
+      sets = lapply(per_fold, `[[`, "stable")
+    )
+  })
+
+  best_g <- which.max(vapply(grid_res, `[[`, numeric(1), "r2"))
+  best   <- grid_res[[best_g]]
+
+  jac <- mean(combn(length(best$sets), 2,
+                    function(i) jac_fn(best$sets[[i[1]]], best$sets[[i[2]]]),
+                    simplify = TRUE))
+
+  message(sprintf(">>> [%s] DONE — best g%02d cv_r2=%.3f jaccard=%.3f",
+                  vname, best_g, best$r2, jac))
+
+  list(
+    variant  = vname,
+    best_row = GRID[best_g, ],
+    cv_r2    = best$r2,
+    cv_r2s   = best$r2s,
+    jaccard  = jac,
+    sets     = best$sets
+  )
+}
+
+tune <- lapply(names(VARIANTS), tune_one)
+names(tune) <- names(VARIANTS)
+```
+
+## Results
+
+### Variant selection
+
+For each variant, hyperparameters were tuned by predictive $R^2$. Variant
+selection itself uses the **Nogueira size-corrected stability index**
+$\hat{\Phi}$ (Nogueira, Sechidis & Brown, 2018), which corrects the inflation
+that raw Jaccard exhibits when comparing variants with different stable-set
+sizes. Among variants whose $\hat{\Phi}$ falls within one SE of the maximum, we
+select the most **parsimonious** (smallest $\bar{k}$).
+
+```{r cv-select, eval=FALSE}
+# ── Nogueira Φ̂ helpers ───────────────────────────────────────────────────────
+.phi_hat <- function(sets, d) {
+  M     <- length(sets)
+  k_bar <- mean(sapply(sets, length))
+  if (k_bar == 0 || k_bar >= d) return(NA_real_)
+  pairs <- combn(M, 2, simplify = FALSE)
+  sym_d <- sapply(pairs, function(idx) {
+    a <- sets[[idx[1]]]; b <- sets[[idx[2]]]
+    length(a) + length(b) - 2L * length(intersect(a, b))
+  })
+  v_obs  <- mean(sym_d) / d
+  v_null <- 2 * k_bar * (d - k_bar) / d^2
+  1 - v_obs / v_null
+}
+
+.phi_se <- function(sets, d) {
+  M     <- length(sets)
+  k_bar <- mean(sapply(sets, length))
+  if (k_bar == 0 || k_bar >= d) return(NA_real_)
+  v_null <- 2 * k_bar * (d - k_bar) / d^2
+  pairs  <- combn(M, 2, simplify = FALSE)
+  v_ij   <- sapply(pairs, function(idx) {
+    a <- sets[[idx[1]]]; b <- sets[[idx[2]]]
+    (length(a) + length(b) - 2L * length(intersect(a, b))) / d
+  })
+  sd(v_ij) / (sqrt(length(v_ij)) * v_null)
+}
+
+d_total <- ncol(wdi_X)
+
+summary_tbl <- do.call(rbind, lapply(tune, function(t) {
+  phi    <- .phi_hat(t$sets, d_total)
+  phi_se <- .phi_se(t$sets, d_total)
+  k_bar  <- mean(sapply(t$sets, length))
+  data.frame(
+    Variant        = t$variant,
+    CV_R2          = round(t$cv_r2, 3),
+    CV_R2_SE       = round(sd(t$cv_r2s, na.rm = TRUE) /
+                             sqrt(sum(!is.na(t$cv_r2s))), 3),
+    Jaccard        = round(t$jaccard, 3),
+    Phi            = round(phi, 3),
+    Phi_SE         = round(phi_se, 3),
+    k_bar          = round(k_bar, 1),
+    `Best pi_thr`  = t$best_row$pi_thr,
+    check.names = FALSE, row.names = NULL
+  )
+}))
+
+# 1-SE rule on Φ̂; parsimony tiebreaker (smallest k̄)
+top     <- which.max(summary_tbl$Phi)
+cutoff  <- summary_tbl$Phi[top] - summary_tbl$Phi_SE[top]
+in_band <- summary_tbl[summary_tbl$Phi >= cutoff, ]
+best_v  <- in_band$Variant[which.min(in_band$k_bar)]
+
+knitr::kable(summary_tbl, align = "lccccccc",
+             caption = "Validation-fold performance and Nogueira stability (Φ̂) per variant.")
+cat("Selected variant (1-SE on Φ̂, parsimony tiebreak):", best_v, "\n")
+```
+
+```{r show-summary, echo=FALSE}
+if (!is.null(sf_cache))
+  knitr::kable(sf_cache$summary_tbl, align = "lccccccc",
+               caption = "Validation-fold performance and Nogueira stability (Φ̂) per variant.")
+```
+
+### Pairwise variant comparison
+
+The five validation folds give five paired $R^2$ values per variant. We test
+all 15 pairs with a paired Wilcoxon test and apply Benjamini-Hochberg
+correction.
+
+```{r pairwise, eval=FALSE}
+pairs <- combn(names(VARIANTS), 2, simplify = FALSE)
+
+pw <- do.call(rbind, lapply(pairs, function(p) {
+  a <- tune[[p[1]]]$cv_r2s
+  b <- tune[[p[2]]]$cv_r2s
+  wt <- wilcox.test(a, b, paired = TRUE, exact = FALSE)
+  data.frame(`Method A` = p[1], `Method B` = p[2],
+             `ΔR2`      = round(mean(a - b, na.rm = TRUE), 3),
+             `p-value`  = round(wt$p.value, 4),
+             check.names = FALSE)
+}))
+pw$`p-adj (BH)` <- round(p.adjust(pw$`p-value`, method = "BH"), 4)
+knitr::kable(pw, caption = "Pairwise Wilcoxon tests on validation-fold R².")
+```
+
+```{r show-pairwise, echo=FALSE}
+if (!is.null(sf_cache))
+  knitr::kable(sf_cache$pw, caption = "Pairwise Wilcoxon tests on validation-fold R².")
+```
+
+### Nogueira stability
+
+```{r phi-plot, eval=FALSE}
+#| fig-cap: "Nogueira size-corrected stability index (Φ̂) per variant with ±1 SE error bars. Unlike raw Jaccard, Φ̂ accounts for the expected overlap at each variant's selection size, enabling unbiased cross-variant comparison."
+library(ggplot2)
+
+phi_df <- data.frame(
+  Variant = summary_tbl$Variant,
+  Phi     = summary_tbl$Phi,
+  Phi_SE  = summary_tbl$Phi_SE
+)
+
+ggplot(phi_df, aes(x = reorder(Variant, Phi), y = Phi)) +
+  geom_col(fill = "#1F77B4", width = 0.6) +
+  geom_errorbar(aes(ymin = Phi - Phi_SE, ymax = Phi + Phi_SE),
+                width = 0.25, colour = "grey30") +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  coord_flip() +
+  labs(title    = "Nogueira size-corrected stability per variant",
+       subtitle = "Error bars = ±1 SE  |  Dashed line = random-selection null (Φ̂ = 0)",
+       x = NULL, y = expression(hat(Phi))) +
+  theme_bw()
+```
+
+```{r show-jaccard, echo=FALSE}
+#| fig-cap: "Nogueira size-corrected stability index (Φ̂) per variant with ±1 SE error bars."
+if (!is.null(sf_cache)) print(sf_cache$p_jaccard)
+```
+
+### Final models and held-out test evaluation
+
+We refit **every** variant on the full train+validation set at its locked
+hyperparameters, then score each on the vaulted test set — the single time the
+test data is touched. Each `final_models[[v]]$fit` is a complete
+`shapleyforest` object available for further exploration.
+
+```{r final-models, eval=FALSE}
+final_models <- lapply(names(VARIANTS), function(vname) {
+  variant <- VARIANTS[[vname]]
+  row     <- tune[[vname]]$best_row
+
+  sc <- screen_control(
+    drop_fraction = row$screen_drop,
+    min_ntree     = 500L
+  )
+  sl <- select_control(
+    drop_fraction    = row$select_drop,
+    pi_thr           = row$pi_thr,
+    n_boots          = 25L,
+    min_ntree        = 500L,
+    shadow_mode      = variant$shadow_mode,
+    use_dml_residual = variant$use_dml_residual,
+    dml_scope        = variant$dml_scope
+  )
+
+  set.seed(42)
+  fit <- sf(X_tv, y_tv,
+            module_membership = module_membership,
+            screen_params     = sc,
+            select_params     = sl,
+            backend           = "python",
+            seed              = 42L,
+            verbose           = 0L)
+
+  stable <- fit$feature_list$feature_name
+  rf <- ranger::ranger(
+    y ~ ., num.trees = 300L, seed = 1L,
+    data = data.frame(y = y_tv, X_tv[, stable, drop = FALSE])
+  )
+  pred <- predict(rf, data.frame(X_test[, stable, drop = FALSE]))$predictions
+  sse  <- sum((pred - y_test)^2); sst <- sum((y_test - mean(y_test))^2)
+
+  list(
+    fit       = fit,
+    test_r2   = 1 - sse / sst,
+    test_rmse = sqrt(mean((pred - y_test)^2)),
+    n_stable  = length(stable)
+  )
+})
+names(final_models) <- names(VARIANTS)
+
+test_tbl <- data.frame(
+  Variant   = names(final_models),
+  Test_R2   = round(vapply(final_models, `[[`, numeric(1), "test_r2"),   3),
+  Test_RMSE = round(vapply(final_models, `[[`, numeric(1), "test_rmse"), 3),
+  n_stable  = vapply(final_models, `[[`, integer(1), "n_stable"),
+  Selected  = ifelse(names(final_models) == best_v, "<<", ""),
+  row.names = NULL
+)
+knitr::kable(test_tbl, align = "lcccc",
+             caption = "Held-out test-vault performance (selection made on validation only).")
+```
+
+```{r show-test, echo=FALSE}
+if (!is.null(sf_cache))
+  knitr::kable(sf_cache$test_tbl, align = "lcccc",
+               caption = "Held-out test-vault performance (selection made on validation only).")
+```
+
+The test vault is small (~20% of only 181 countries), so read these numbers as
+noisy point estimates — the validation-fold distributions and the pairwise
+Wilcoxon table above remain the stronger basis for *comparing* variants.
+
+### Predictive value of the stable set
+
+Does the small stable set actually retain the signal, or does selection throw
+away useful predictors? We compare a random forest trained on **all 501
+indicators** against one trained on **only the SF stable set**, both scored on
+the same held-out test vault with identical RF settings. If the stable set
+matches (or beats) the full model with a fraction of the features, SF has cut
+through the redundancy without losing predictive power.
+
+```{r perf-compare, eval=FALSE}
+stable_final <- final_models[[best_v]]$fit$feature_list$feature_name
+
+fit_rf_r2 <- function(feats) {
+  rf   <- ranger::ranger(y ~ ., num.trees = 300L, seed = 1L,
+                         data = data.frame(y = y_tv, X_tv[, feats, drop = FALSE]))
+  pred <- predict(rf, data.frame(X_test[, feats, drop = FALSE]))$predictions
+  sse  <- sum((pred - y_test)^2); sst <- sum((y_test - mean(y_test))^2)
+  c(r2 = 1 - sse / sst, rmse = sqrt(mean((pred - y_test)^2)))
+}
+
+m_full   <- fit_rf_r2(colnames(X_tv))
+m_stable <- fit_rf_r2(stable_final)
+
+perf_tbl <- data.frame(
+  `Feature set` = c(sprintf("Full (%d indicators)", ncol(X_tv)),
+                    sprintf("SF stable set (%d)", length(stable_final))),
+  n_features    = c(ncol(X_tv), length(stable_final)),
+  Test_R2       = round(c(m_full["r2"],   m_stable["r2"]),   3),
+  Test_RMSE     = round(c(m_full["rmse"], m_stable["rmse"]), 3),
+  check.names   = FALSE, row.names = NULL
+)
+knitr::kable(perf_tbl, align = "lccc",
+             caption = "Held-out test performance: full feature set vs SF stable set.")
+```
+
+```{r show-perf, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$perf_tbl))
+  knitr::kable(sf_cache$perf_tbl, align = "lccc",
+               caption = "Held-out test performance: full feature set vs SF stable set.")
+```
+
+### Top stable indicators by SHAP
+
+The deployed model's most influential indicators, ranked by **mean |SHAP|**
+(average absolute contribution to the life-expectancy prediction across
+countries), with their WGCNA module, effect **direction**, and cross-fit
+selection stability. Direction is the sign of the Spearman correlation between
+each indicator's value and its SHAP value: **+** promotes higher life
+expectancy, **−** suppresses it. Indicators whose SHAP–value relationship is
+non-monotone (|ρ| < 0.1) are flagged *ambiguous* — a single sign would mislead.
+
+```{r shap-final, eval=FALSE}
+best_fit <- final_models[[best_v]]$fit
+
+sh <- best_fit$final_SHAP
+sh$score <- if (!is.null(sh$mean_abs_shap)) sh$mean_abs_shap else abs(sh$variable_importance)
+sh <- sh[order(-sh$score), ]
+
+shap_tbl <- data.frame(
+  Indicator     = unname(wdi_labels[sh$feature_name]),
+  Module        = sh$module_membership,
+  `Mean |SHAP|` = round(sh$score, 4),
+  Direction     = if (!is.null(sh$direction))
+                    ifelse(sh$direction_ambiguous, "ambiguous",
+                    ifelse(sh$direction > 0, "+ (promotes)", "− (suppresses)"))
+                  else NA_character_,
+  Stability     = if (!is.null(sh$stability_freq)) round(sh$stability_freq, 3) else NA_real_,
+  check.names   = FALSE,
+  row.names     = NULL
+)[seq_len(min(10L, nrow(sh))), ]
+
+knitr::kable(shap_tbl, align = "lcccc",
+             caption = "Top 10 stable indicators by mean |SHAP| (deployed model).")
+```
+
+```{r show-shap, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$shap_tbl))
+  knitr::kable(sf_cache$shap_tbl, align = "lcccc",
+               caption = "Top 10 stable indicators by mean |SHAP| (deployed model).")
+```
+
+### Directional feature importance
+
+Magnitude alone (mean |SHAP|) does not say *which way* an indicator pushes the
+prediction — and mean *signed* SHAP is near zero because positive and negative
+contributions cancel across countries. `plot_signed_importance()` resolves this
+by taking each bar's length from mean |SHAP| and its **sign from the
+value–SHAP Spearman direction**: bars to the right promote life expectancy, to
+the left suppress it, and greyed bars are direction-ambiguous.
+
+```{r signed-plot, eval=FALSE}
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Top 20 indicators by |signed importance| for the deployed model. Bar length = mean |SHAP|; sign = value–SHAP Spearman direction. Right promotes life expectancy, left suppresses; grey = ambiguous."
+
+# `labels` annotates the axis with human-readable indicator names
+p_signed <- plot_signed_importance(best_fit, top_n = 30, labels = wdi_labels)
+```
+
+```{r show-signed, echo=FALSE}
+#| fig-width: 9
+#| fig-height: 7
+#| fig-cap: "Top 20 indicators by |signed importance| for the deployed model. Bar length = mean |SHAP|; sign = value–SHAP Spearman direction. Right promotes life expectancy, left suppresses; grey = ambiguous."
+if (!is.null(sf_cache) && !is.null(sf_cache$p_signed)) print(sf_cache$p_signed)
+```
+
+The same information as a table — the top 20 indicators by \|signed
+importance\|, with the value–SHAP Spearman correlation ($\rho$) behind each
+direction call:
+
+```{r signed-table, eval=FALSE}
+sg <- best_fit$final_SHAP
+sg <- sg[order(-abs(sg$signed_importance)), ][seq_len(min(20L, nrow(sg))), ]
+
+signed_tbl <- data.frame(
+  Indicator           = unname(wdi_labels[sg$feature_name]),
+  Module              = sg$module_membership,
+  Direction           = ifelse(sg$direction_ambiguous, "ambiguous",
+                        ifelse(sg$direction > 0, "+ (promotes)", "− (suppresses)")),
+  `rho(value, SHAP)`  = round(sg$dir_corr, 3),
+  `Signed importance` = round(sg$signed_importance, 4),
+  check.names = FALSE, row.names = NULL
+)
+
+knitr::kable(signed_tbl, align = "lcccc",
+             caption = "Top 20 indicators by |signed importance| (deployed model).")
+```
+
+```{r show-signed-table, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$signed_tbl))
+  knitr::kable(sf_cache$signed_tbl, align = "lcccc",
+               caption = "Top 20 indicators by |signed importance| (deployed model).")
+```
+
+### Domain validation
+
+As an annotation-free sanity check: do the indicators SF deems stable line up
+with the indicators that simply correlate most strongly with life expectancy on
+their own? If the deployed stable set recovers most of the top univariate hits,
+SF is capturing the dominant development signal while additionally controlling
+for the block-correlation structure a plain correlation ignores.
+
+```{r domain, eval=FALSE}
+stable_final <- best_fit$feature_list$feature_name
+
+# Recovery of the strongest univariate signal
+cors  <- vapply(X_tv, function(col) cor(col, y_tv), numeric(1))
+top_c <- names(sort(abs(cors), decreasing = TRUE))[1:30]
+
+domain_tbl <- data.frame(
+  Metric = c("Selected variant",
+             "Deployed stable set size",
+             "Top-30 |cor| indicators recovered"),
+  Value  = c(best_v,
+             as.character(length(stable_final)),
+             sprintf("%d / 30", length(intersect(top_c, stable_final)))),
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(domain_tbl, caption = "Domain validation summary (deployed model).")
+```
+
+```{r show-domain, echo=FALSE}
+if (!is.null(sf_cache) && !is.null(sf_cache$domain_tbl))
+  knitr::kable(sf_cache$domain_tbl, caption = "Domain validation summary (deployed model).")
+```
+
+```{r save-results, eval=FALSE}
+library(ggplot2)
+saveRDS(
+  list(
+    p_stability  = plot_stability(fit),
+    p_importance = plot_importance(fit, top_n = 20),
+    p_jaccard    = ggplot(phi_df, aes(x = reorder(Variant, Phi), y = Phi)) +
+                     geom_col(fill = "#1F77B4", width = 0.6) +
+                     geom_errorbar(aes(ymin = Phi - Phi_SE, ymax = Phi + Phi_SE),
+                                   width = 0.25, colour = "grey30") +
+                     geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+                     coord_flip() +
+                     labs(title    = "Nogueira size-corrected stability per variant",
+                          subtitle = "Error bars = ±1 SE  |  Dashed line = random-selection null (Φ̂ = 0)",
+                          x = NULL, y = expression(hat(Phi))) +
+                     theme_bw(),
+    summary_tbl     = summary_tbl,
+    pw              = pw,
+    test_tbl        = test_tbl,
+    perf_tbl        = perf_tbl,
+    shap_tbl        = shap_tbl,
+    p_signed        = p_signed,
+    signed_tbl      = signed_tbl,
+    domain_tbl      = domain_tbl,
+    mod_tbl         = mod_tbl,
+    p_dendro        = p_dendro,
+    top_hubs_disp   = top_hubs_disp,
+    p_hub           = p_hub,
+    membership_xtab = membership_xtab
+  ),
+  "wdi_results.rds"
+)
+```
+
+---
+
+# Reporting Checklist
+
+| Item | Source |
+|------|--------|
+| Validation-fold R² + stability per variant | `summary_tbl` |
+| Held-out test R² / RMSE per variant | `test_tbl` |
+| Selected variant (1-SE on Φ̂) | `best_v` |
+| Locked tuned hyperparameters | `summary_tbl` Best * columns |
+| Pairwise variant comparison | paired Wilcoxon + BH table |
+| Nogueira stability across validation folds | bar chart |
+| Soft-threshold power justification | R² + connectivity plots |
+| Domain overlap | deployed stable set vs top-correlated indicators |
+| Fitted models for plotting | `final_models[[v]]$fit` |
+
+---
+
+# Session Info
+
+```{r session}
+sessionInfo()
+```

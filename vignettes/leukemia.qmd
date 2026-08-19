@@ -25,16 +25,16 @@ knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
 # Introduction
 
 This vignette demonstrates the full Shapley Forest (SF) workflow on the
-**Acute Lymphoblastic Leukemia (ALL)** microarray dataset. The dataset is a canonical
-high-dimensional genomics benchmark originally in `ALL` package.
+**Acute Lymphoblastic Leukemia (ALL)** microarray dataset. The dataset is a
+high-dimensional genomics dataset originally in the `ALL` package.
 
 
 
-The vignette proceeds in four stages:
+The vignette is separated in four stages:
 
 1. Data loading and summary
-2. WGCNA — soft-threshold selection, module detection, dendrogram
-3. Single SF run and output exploration
+2. WGCNA
+3. Single SF run and output for exploration purposes
 4. Nested cross-validation comparing all six SF variants with joint
    hyperparameter tuning
 
@@ -42,17 +42,23 @@ The vignette proceeds in four stages:
 
 # Data
 
-The preprocessed dataset ships with the package — no Bioconductor installation
-needed.
+We first load the data (included in the package).
 
-```{r data}
+```{r packages}
+#| warning: false
+#| message: false
+
 if (!require("devtools", quietly = TRUE))
     install.packages("devtools")
 library(devtools)
 devtools::install_github("timothyzshen/shapleyforest")
 
 library(shapleyforest)
+library(WGCNA)
+```
 
+
+```{r data}
 data(leukemia)
 
 leukemia_X <- leukemia$X
@@ -61,19 +67,21 @@ leukemia_y <- leukemia$y
 cat("Samples :", nrow(leukemia_X), "\n")
 cat("Features:", ncol(leukemia_X), "\n")
 cat("Outcome :", paste(names(table(leukemia_y)), collapse = " / "),
-    "→", paste(table(leukemia_y), collapse = " / "), "\n")
+    "→ Distribution of Outcomes:", paste(table(leukemia_y), collapse = " / "), "\n")
 ```
 
+```{r results-cache, echo=FALSE}
+sf_cache <- if (file.exists("leukemia_results.rds")) readRDS("leukemia_results.rds") else NULL
+```
+
+We have a relatively small dataset of $79 \times 500$ where the outcome is binary outcome of testing positive for leukemia.
 ---
 
 # WGCNA Module Detection
 
-Before running SF we perform WGCNA ourselves so we can inspect the network
-structure.  `wsf()` can run WGCNA internally, but doing it manually lets us
-examine — and justify — the soft-threshold power and the resulting modules.
+Before running SF we perform WGCNA ourselves to build the network structure.  `wsf()` can run WGCNA internally, but we do it manually which lets us select the parameters manually.
 
 ```{r wgcna-load}
-library(WGCNA)
 options(stringsAsFactors = FALSE)
 enableWGCNAThreads()
 ```
@@ -81,11 +89,10 @@ enableWGCNAThreads()
 ## Soft-threshold power selection
 
 WGCNA constructs a weighted gene co-expression network by raising pairwise
-correlations to a soft-thresholding power β.  The chosen power should make
-the resulting network approximately **scale-free** (R² ≥ 0.85) while keeping
-**mean connectivity** reasonably high (not near zero).
+correlations to a soft-thresholding power $\beta$.  The chosen power should make
+the resulting network approximately **scale-free** ($R^2$ be greater than 0.8) while keeping **mean connectivity** reasonably high (not near zero).
 
-```{r soft-threshold, eval=false}
+```{r soft-threshold, eval=FALSE}
 powers <- c(1:10, seq(12, 20, by = 2))
 
 sft <- pickSoftThreshold(
@@ -96,26 +103,26 @@ sft <- pickSoftThreshold(
 )
 ```
 
-```{r soft-threshold-plot, eval=false}
+```{r soft-threshold-plot, eval=FALSE}
 #| fig-width: 10
 #| fig-height: 4
-#| fig-cap: "Left: scale-free topology fit (R²) vs soft power. Right: mean network connectivity vs soft power. Choose the lowest power where R² ≥ 0.85 (dashed line)."
+#| fig-cap: "Left: scale-free topology fit (R²) vs soft power. Right: mean network connectivity vs soft power. Choose the lowest power where R² ≥ 0.8 (dashed line)."
 
 par(mfrow = c(1, 2), mar = c(5, 5, 3, 1))
 
-# ── R² (scale-free fit) ────────────────────────────────────────────────────────
+# Scale-free topology plot
 plot(sft$fitIndices[, 1],
      -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
      xlab = "Soft-threshold power (β)",
      ylab = expression(paste("Scale-free topology fit R"^2)),
      main = "Scale-free fit",
      type = "n", ylim = c(0, 1))
-abline(h = 0.85, lty = 2, col = "tomato", lwd = 1.5)
+abline(h = 0.8, lty = 2, col = "tomato", lwd = 1.5)
 text(sft$fitIndices[, 1],
      -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
      labels = powers, col = "#1F77B4", cex = 0.9, font = 2)
 
-# ── Mean connectivity ──────────────────────────────────────────────────────────
+# Mean connectivity plot
 plot(sft$fitIndices[, 1],
      sft$fitIndices[, 5],
      xlab = "Soft-threshold power (β)",
@@ -127,13 +134,11 @@ text(sft$fitIndices[, 1],
      labels = powers, col = "#D62728", cex = 0.9, font = 2)
 ```
 
-From the plots we choose **β = 12** — the lowest power where R² ≥ 0.85 and
+From the plots we choose **β = 7**, the lowest power where R² is close to 0.8 and
 mean connectivity is still distinguishable from zero.
 
-## Module detection and dendrogram
-
-```{r wgcna-modules, eval=false}
-SOFT_POWER <- 12L
+```{r wgcna-modules-beta7, eval=FALSE}
+SOFT_POWER <- 7L
 
 net <- blockwiseModules(
   leukemia_X,
@@ -141,7 +146,7 @@ net <- blockwiseModules(
   networkType       = "signed hybrid",
   TOMType           = "signed",
   minModuleSize     = 10L,
-  mergeCutHeight    = 0.25,
+  mergeCutHeight    = 0.15,
   numericLabels     = FALSE,
   pamRespectsDendro = FALSE,
   saveTOMs          = FALSE,
@@ -151,7 +156,30 @@ net <- blockwiseModules(
 table(net$colors)   # grey = unassigned (treated as independent by SF)
 ```
 
-```{r wgcna-dendro, eval=false}
+Note here the large amount of modules assigned to independent module. We note that the scale-free-topology rule is a guideline. Langfelder & Horvath (WGCNA's authors) acknowledged that scenarios where there are few samples with a sparse network type (signed hybrid) can lead to the $R^2$ criterion to become unreliable and often forces a power so high that the network sparsifies into mostly-grey (independent). Thus, here the $R^2$ estimate itself is noisy, and only 500 genes is a small network for this curve to behave well. So we manually select a lower power threshold of $\beta = 4$.
+
+## Module detection and dendrogram
+
+```{r wgcna-modules-beta4, eval=FALSE}
+SOFT_POWER <- 4L
+
+net <- blockwiseModules(
+  leukemia_X,
+  power             = SOFT_POWER,
+  networkType       = "signed hybrid",
+  TOMType           = "signed",
+  minModuleSize     = 10L,
+  mergeCutHeight    = 0.15,
+  numericLabels     = FALSE,
+  pamRespectsDendro = FALSE,
+  saveTOMs          = FALSE,
+  verbose           = 0
+)
+
+table(net$colors)   # grey = unassigned (treated as independent by SF)
+```
+
+```{r wgcna-dendro, eval=FALSE}
 #| fig-width: 12
 #| fig-height: 6
 #| fig-cap: "Gene dendrogram with module colour bar. Grey = unassigned features — these form the independent pool in SF's split shadow mode."
@@ -170,58 +198,182 @@ plotDendroAndColors(
 
 ### Module membership summary
 
-```{r module-summary, eval=false}
+```{r module-summary, eval=FALSE}
 mod_tbl <- as.data.frame(table(Module = net$colors))
 mod_tbl$Independent <- mod_tbl$Module == "grey"
 mod_tbl[order(mod_tbl$Freq, decreasing = TRUE), ]
 ```
 
-Grey-labelled features are **unassigned by WGCNA** and treated as the
-independent pool in SF's split shadow-stability mode.  A non-trivial
-independent pool (> 5 % of features) validates the split architecture.
+Grey-labelled features are **unassigned by WGCNA** and treated as the independent pool.
 
-### Extract module membership for SF
+### Eigengene-based connectivity (kME)
 
-```{r module-membership, eval=false}
-# Convert WGCNA colour labels → named character vector expected by sf()
-module_membership <- net$colors
+Module eigengenes summarise each module's expression profile as a single
+representative vector. Correlating every gene with each module eigengene
+gives its **module membership** ($k_{ME}$). This is a continuous measure of how
+central a gene is to that module, independent of where the dendrogram was cut.
+
+```{r kme, eval=FALSE}
+MEs <- net$MEs
+kME <- as.data.frame(signedKME(leukemia_X, MEs, outputColumnName = "kME"))
+
+# kME of each gene to the module it was originally assigned to
+gene_kME <- vapply(seq_along(net$colors), function(i) {
+  col <- paste0("kME", net$colors[i])
+  if (col %in% colnames(kME)) kME[i, col] else NA_real_
+}, numeric(1))
+```
+
+### Hub genes
+
+Intramodular **hub genes** are the features most strongly correlated with
+their module's eigengene ($k_{ME}$ near 1). Practically, this is the genes that
+best represent their module's expression pattern and the most promising
+candidates for follow-up.
+
+```{r hub-genes, eval=FALSE}
+hub_df <- data.frame(
+  gene   = colnames(leukemia_X),
+  module = net$colors,
+  kME    = gene_kME,
+  stringsAsFactors = FALSE
+)
+hub_df <- hub_df[hub_df$module != "grey" & !is.na(hub_df$kME), ]
+
+top_hubs <- hub_df[order(-hub_df$kME), ][seq_len(min(20L, nrow(hub_df))), ]
+top_hubs
+```
+
+```{r hub-lollipop, eval=FALSE}
+#| fig-cap: "Top 20 intramodular hub genes ranked by eigengene-based connectivity (kME), coloured by WGCNA module."
+library(ggplot2)
+
+ggplot(top_hubs, aes(x = reorder(gene, kME), y = kME, colour = module)) +
+  geom_segment(aes(xend = gene, y = 0, yend = kME), linewidth = 0.9) +
+  geom_point(size = 3) +
+  scale_colour_identity(guide = "legend", name = "Module",
+                        breaks = unique(top_hubs$module),
+                        labels = unique(top_hubs$module)) +
+  coord_flip() +
+  labs(title    = "Top intramodular hub genes",
+       subtitle = "Ranked by eigengene-based connectivity (kME)",
+       x = NULL, y = expression(k[ME])) +
+  theme_bw()
+```
+
+### Final module membership (kME-refined)
+
+Hierarchical clustering can leave borderline genes mis-assigned at the
+dendrogram cut. As a final refinement we reassign every gene to the module
+whose eigengene it correlates with most strongly. This is its **maximum-kME module**. This will be the membership (not the raw clustering output) to SF.
+
+```{r module-membership, eval=FALSE}
+module_names <- sub("^kME", "", colnames(kME))
+best_module  <- module_names[max.col(as.matrix(kME), ties.method = "first")]
+
+module_membership <- best_module
 names(module_membership) <- colnames(leukemia_X)
 
-# Recode grey → "independent" so SF recognises the independent pool
+# Recode grey (no strong eigengene correlation) → "independent" so SF
+# recognises the independent pool
 module_membership[module_membership == "grey"] <- "independent"
+
+# How much does kME-refinement move genes relative to the dendrogram cut?
+table(clustering = net$colors, kME_refined = module_membership)
 ```
+
+This `module_membership` — computed here on **all** samples — is reused
+everywhere below: by the single SF run, and by every cross-validation fold and
+the final refit in the model-comparison section. WGCNA is **unsupervised** (it
+is built from gene–gene correlations in `X` and never sees the outcome `y`), so
+defining modules on the full expression matrix does **not** leak the label.
 
 ---
 
 # Single SF Run
 
 We fit SF once on the full dataset using the module membership derived above
-and the pure-R backend so no Python environment is required.
+and the **Python backend**, which provides exact TreeSHAP values plus an
+interaction matrix and is much faster than the pure-R fallback.
+This requires a Python environment with `scikit-learn`, `shap`, and `numpy`
+(see `?sf_setup`); configure it once per session with `sf_setup()`.
 
-```{r single-run, eval=false}
-set.seed(42)
+```{r sf-setup, eval=FALSE}
+sf_setup()
+```
+
+```{r single-run, eval=FALSE}
+leukemia_X <- as.data.frame(leukemia_X)
+
 fit <- sf(
-  X                = leukemia_X,
-  y                = leukemia_y,
+  X = leukemia_X,
+  y = leukemia_y,
   module_membership = module_membership,
-  backend          = "R",
-  r_shap           = "fastshap",
-  verbose          = 1L
+  backend = "python",
+  verbose = 1L,
+  seed = 2026
 )
 ```
 
 ## Stable set
 
-```{r stable-set, eval=false}
-cat("Stable features selected:", length(fit$stable_features), "\n")
+```{r stable-set, eval=FALSE}
+cat("Stable features selected:", length(fit$feature_list$feature_name), "\n")
 head(sort(fit$stability_freq, decreasing = TRUE), 20)
 ```
 
+### Biological validation
+
+A stable setis only reassuring if it's *the right* set. Two quick, annotation-free checks
+against the dominant BCR/ABL-vs-NEG signal:
+
+1. **Rank agreement with a naive baseline** -- do SF's top features by
+   selection importance (`variable_importance`) line up with the features
+   that simply have the largest BCR/ABL-vs-NEG t-statistic? If SF and a
+   one-line `t.test()` agree on their top hits, SF is recovering the dominant
+   subtype signal rather than fitting noise. (Note: `mean_abs_shap` is *not* a
+   good ranking here, it reflects SHAP magnitude in either direction,
+   including features that push toward the *opposite* class or that matter
+   only through interactions, so it can diverge from a univariate t-test even
+   when SF's selection is sound; `variable_importance` tracks univariate
+   separation far more directly.)
+2. **Recovery of the strongest univariate signal** -- of the probes with the
+   largest |t-statistic|, how many does the stable set actually capture? High
+   recovery means SF retains the genes any simple test would flag, while
+   additionally controlling for the module-correlation structure a plain
+   t-test ignores.
+
+```{r bio-single, eval=FALSE}
+stable <- fit$feature_list$feature_name
+
+# (1) Top SF-importance features vs top features by a plain BCR/ABL-vs-NEG t-test
+tstats <- apply(leukemia_X, 2, function(col) {
+  t.test(col[leukemia_y == 1], col[leukemia_y == 0])$statistic
+})
+top_imp <- head(fit$final_SHAP$feature_name[order(-fit$final_SHAP$variable_importance)], 15)
+top_t   <- names(sort(abs(tstats), decreasing = TRUE))[1:15]
+cat("Overlap, top-15 SF-importance vs top-15 |t-stat| features:",
+    length(intersect(top_imp, top_t)), "/ 15\n")
+
+# (2) Recovery of the strongest univariate signal into the stable set
+top_t30 <- names(sort(abs(tstats), decreasing = TRUE))[1:30]
+cat("Top-30 |t-stat| probes recovered in stable set:",
+    length(intersect(top_t30, stable)), "/ 30\n")
+```
+
+Here, the overlap in (1) is high and most of the strong univariate hits in (2)
+are recovered.
+
 ## Stability plot
 
-```{r plot-stability, eval=false}
+```{r plot-stability, eval=FALSE}
 #| fig-cap: "Shadow-win frequency per feature. Filled points exceed the stability threshold and enter the stable set."
 plot_stability(fit)
+```
+
+```{r show-stability, echo=FALSE}
+#| fig-cap: "Shadow-win frequency per feature. Filled points exceed the stability threshold and enter the stable set."
+if (!is.null(sf_cache)) print(sf_cache$p_stability)
 ```
 
 The dashed horizontal line is the tuned `pi_thr`.  The right panel shows the
@@ -229,20 +381,25 @@ independent pool with its own elbow-detected threshold.
 
 ## Feature importance
 
-```{r plot-importance, eval=false}
+```{r plot-importance, eval=FALSE}
 #| fig-cap: "Mean |SHAP| for the top 20 stable features."
 plot_importance(fit, top_n = 20)
 ```
 
+```{r show-importance, echo=FALSE}
+#| fig-cap: "Mean |SHAP| for the top 20 stable features."
+if (!is.null(sf_cache)) print(sf_cache$p_importance)
+```
+
 ---
 
-# Nested Cross-Validation
+# Model Comparison: Three-Way Split + Cross-Validated Tuning
 
 ## Design
 
-We compare **six SF variants** formed by two shadow modes × three DML options:
+We compare **six SF variants** formed by two criterions × three DML options:
 
-| Variant | Shadow mode | DML |
+| Variant | Criterions | DML |
 |---------|------------|-----|
 | `split` | split | none |
 | `split_dml` | split | standard |
@@ -251,82 +408,115 @@ We compare **six SF variants** formed by two shadow modes × three DML options:
 | `within_dml` | within_module | standard |
 | `within_mdml` | within_module | marginal |
 
-**Outer loop (k = 5):** five held-out test folds that are never seen during
-tuning.  Provides the unbiased AUC estimates used for variant comparison.
+There are many ways to approach evaluating the best parameters for variable importance.
 
-**Inner loop (k = 3):** three-fold CV within each outer training fold.
-Used to jointly tune three hyperparameters:
+We proceed with the following:
+
+0. **Modules from all data.** The WGCNA network / `module_membership` from the
+   section above (built on all samples) is reused throughout.
+   
+1. **Vault a test set** (~20%, stratified) — held out once, scored once, at
+   the very end.
+2. **On the remaining ~80% (train):** 5-fold CV tunes the hyperparameter grid *and* compares the six variants on both performance (mean validation-fold AUC) **and** stability (Jaccard of the stable set across folds).
+3. **Select one variant** by a pre-specified rule (below), refit every variant
+   on the *full* train set, and report performance on the test set. 
+
+Hyperparameters tuned jointly on the validation folds:
 
 | Parameter | Grid | Default |
 |-----------|------|---------|
-| `screen_control(drop_fraction)` | 0.15, 0.25, 0.35 | 0.25 |
-| `select_control(drop_fraction)` | 0.05, 0.10, 0.20 | 0.10 |
-| `select_control(pi_thr)` | 0.40, 0.50, 0.60, 0.70 | 0.60 |
+| `screen_control(drop_fraction)` | 0.25 (fixed) | 0.25 |
+| `select_control(drop_fraction)` | 0.05 (fixed) | 0.10 |
+| `select_control(pi_thr)` | 0.50, 0.60, 0.70 | 0.60 |
+| `min_ntree` (screen + select) | 500 (fixed) | 500 |
+| `n_boots` | 25 (fixed) | 50 |
 
-36 combinations per inner fold.  Selection criterion: mean inner AUC.
-All other parameters remain at their package defaults.
+36 combinations per variant; selection criterion **mean validation-fold AUC**.
+All other parameters stay at package defaults.
+
+**Selection rule (fixed in advance).** Among the six variants we apply the
+**one-standard-error rule**: take the best mean CV AUC, then among all
+variants within one standard error of it, choose the **most stable** (highest
+mean pairwise Jaccard). This buys robustness at the cost of at most a possibly slightly lower accuracy.
 
 ## Setup
 
-```{r cv-setup, eval=false}
+```{r cv-load-pack}
+#| warning: false
+#| message: false
+
 library(pROC)
 library(caret)
-library(future.apply)
-plan(multisession)
+```
+
+```{r cv-setup, eval=FALSE}
 
 VARIANTS <- list(
-  split       = list(shadow_mode = "split",         dml = FALSE),
-  split_dml   = list(shadow_mode = "split",         dml = TRUE),
-  split_mdml  = list(shadow_mode = "split",         dml = "marginal"),
-  within      = list(shadow_mode = "within_module", dml = FALSE),
-  within_dml  = list(shadow_mode = "within_module", dml = TRUE),
-  within_mdml = list(shadow_mode = "within_module", dml = "marginal")
+  split       = list(shadow_mode = "split",         use_dml_residual = FALSE, dml_scope = "indep"),
+  split_dml   = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "indep"),
+  split_mdml  = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "all_modules"),
+  within      = list(shadow_mode = "within_module", use_dml_residual = FALSE, dml_scope = "indep"),
+  within_dml  = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "indep"),
+  within_mdml = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "all_modules")
 )
 
 GRID <- expand.grid(
-  screen_drop = c(0.15, 0.25, 0.35),
-  select_drop = c(0.05, 0.10, 0.20),
-  pi_thr      = c(0.40, 0.50, 0.60, 0.70),
+  screen_drop = 0.25,
+  select_drop = 0.05,
+  pi_thr      = c(0.50, 0.60, 0.70),
   stringsAsFactors = FALSE
 )
 
-set.seed(42)
-outer_folds <- caret::createFolds(leukemia_y, k = 5, returnTrain = FALSE)
+# ── Three-way split ─────────────────────────────────────────────────────────
+# Vault ~20% as the held-out test set (stratified); the rest is train.
+set.seed(2026)
+trainval_idx <- as.integer(caret::createDataPartition(
+  factor(leukemia_y), p = 0.8, list = FALSE))
+test_idx     <- setdiff(seq_along(leukemia_y), trainval_idx)
+
+X_tv   <- leukemia_X[trainval_idx, ]; y_tv   <- leukemia_y[trainval_idx]
+X_test <- leukemia_X[test_idx, ];     y_test <- leukemia_y[test_idx]
+
+# Validation role = 5-fold CV *within* train (stratified)
+val_folds <- caret::createFolds(y_tv, k = 5, returnTrain = FALSE)
+
+cat(sprintf("Train: %d  |  Test vault: %d  |  Test positives: %d\n",
+            length(y_tv), length(y_test), sum(y_test == 1)))
 ```
 
 ## Fit-and-evaluate helper
 
-```{r cv-helper, eval=false}
+```{r cv-helper, eval=FALSE}
 fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
 
-  sc  <- screen_control(drop_fraction = grid_row$screen_drop)
+  sc  <- screen_control(
+    drop_fraction = grid_row$screen_drop,
+    min_ntree     = 500L
+  )
   sl  <- select_control(
-    drop_fraction = grid_row$select_drop,
-    pi_thr        = grid_row$pi_thr,
-    shadow_mode   = variant$shadow_mode
+    drop_fraction    = grid_row$select_drop,
+    pi_thr           = grid_row$pi_thr,
+    n_boots          = 25L,
+    min_ntree        = 500L,
+    shadow_mode      = variant$shadow_mode,
+    use_dml_residual = variant$use_dml_residual,
+    dml_scope        = variant$dml_scope
   )
 
-  # WGCNA on this fold's training data
-  net_fold <- blockwiseModules(
-    X_tr, power = SOFT_POWER, networkType = "signed hybrid",
-    minModuleSize = 10L, mergeCutHeight = 0.25,
-    numericLabels = FALSE, saveTOMs = FALSE, verbose = 0
-  )
-  mm_fold <- net_fold$colors
-  mm_fold[mm_fold == "grey"] <- "independent"
-
+  # Reuse the global module membership (computed once on all data); the gene
+  # columns are identical across folds, only the sample rows change.
   fit <- tryCatch(
     sf(X_tr, y_tr,
-       module_membership = mm_fold,
+       module_membership = module_membership,
        screen_params     = sc,
        select_params     = sl,
-       dml               = variant$dml,
-       backend           = "R", r_shap = "permutation",
+       backend           = "python",
+       seed              = 42L,
        verbose           = 0L),
     error = function(e) NULL
   )
 
-  stable <- if (!is.null(fit)) fit$stable_features else character(0)
+  stable <- if (!is.null(fit)) fit$feature_list$feature_name else character(0)
   if (length(stable) == 0L)
     return(list(auc = NA_real_, brier = NA_real_,
                 n_stable = 0L, stable = character(0)))
@@ -347,117 +537,183 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
 }
 ```
 
-## Nested CV loop
+## Smoke test
 
-```{r nested-cv, eval=false}
-nested_cv_variant <- function(variant_name) {
-  variant <- VARIANTS[[variant_name]]
+The full tuning sweep is 6 variants x 36 grid rows x 5 validation folds --
+over a thousand `sf()` calls (all sharing the one global `module_membership`,
+so no WGCNA re-runs). Before launching that, sanity-check that `fit_eval()`
+runs end-to-end on just a couple of grid rows and a single train/test split.
 
-  outer_results <- lapply(seq_along(outer_folds), function(o) {
+```{r cv-smoke-test, eval=FALSE}
+GRID_smoke <- GRID[1:2, ]                 # just 2 of the 36 combos
+print(GRID_smoke)
 
-    test_idx  <- outer_folds[[o]]
-    train_idx <- setdiff(seq_along(leukemia_y), test_idx)
-    X_tr <- leukemia_X[train_idx, ];  y_tr <- leukemia_y[train_idx]
-    X_te <- leukemia_X[test_idx,  ];  y_te <- leukemia_y[test_idx]
+set.seed(1)
+smoke_split <- caret::createFolds(leukemia_y, k = 5, returnTrain = FALSE)[[1]]
+train_idx <- setdiff(seq_along(leukemia_y), smoke_split)
+test_idx  <- smoke_split
 
-    # ── Inner loop: tune all three params jointly ──────────────────────────
-    inner_folds <- caret::createFolds(y_tr, k = 3L, returnTrain = FALSE)
+smoke_results <- lapply(seq_len(nrow(GRID_smoke)), function(g) {
+  fit_eval(leukemia_X[train_idx, ], leukemia_y[train_idx],
+           leukemia_X[test_idx,  ], leukemia_y[test_idx],
+           VARIANTS[["split"]], GRID_smoke[g, ])
+})
 
-    inner_auc <- future_sapply(seq_len(nrow(GRID)), function(g) {
-      mean(vapply(inner_folds, function(iv) {
-        i_te <- iv; i_tr <- setdiff(seq_along(y_tr), iv)
-        fit_eval(X_tr[i_tr, ], y_tr[i_tr],
-                 X_tr[i_te, ], y_tr[i_te],
-                 variant, GRID[g, ])$auc
-      }, numeric(1L)), na.rm = TRUE)
-    }, future.seed = TRUE)
+data.frame(
+  grid_row = seq_len(nrow(GRID_smoke)),
+  auc      = vapply(smoke_results, `[[`, numeric(1), "auc"),
+  brier    = vapply(smoke_results, `[[`, numeric(1), "brier"),
+  n_stable = vapply(smoke_results, `[[`, numeric(1), "n_stable")
+)
+```
 
-    best_row <- GRID[which.max(inner_auc), ]
+If both rows return a finite `auc` and `n_stable > 0`, `fit_eval()` and
+`sf()` are wired correctly and it's safe to launch the full `tune` sweep
+below.
 
-    # ── Outer: refit on full outer-train ──────────────────────────────────
-    res <- fit_eval(X_tr, y_tr, X_te, y_te, variant, best_row)
+## Cross-validated tuning and stability
 
+For each variant we sweep all 36 grid rows across the five validation folds,
+record each row's mean validation AUC, and lock the best-scoring row. At that
+locked setting we also keep the per-fold stable sets, whose mean pairwise
+Jaccard is the variant's **stability**. Nothing here touches the test vault.
+
+```{r cv-tune, eval=FALSE}
+jac_fn <- function(a, b)
+  length(intersect(a, b)) / max(length(union(a, b)), 1L)
+
+tune_one <- function(vname) {
+  variant <- VARIANTS[[vname]]
+
+  grid_res <- lapply(seq_len(nrow(GRID)), function(g) {
+    per_fold <- lapply(seq_along(val_folds), function(fi) {
+      vi   <- val_folds[[fi]]
+      i_te <- vi; i_tr <- setdiff(seq_along(y_tv), vi)
+      r <- fit_eval(X_tv[i_tr, ], y_tv[i_tr],
+                    X_tv[i_te, ], y_tv[i_te],
+                    variant, GRID[g, ])
+      message(sprintf("[%s] g%02d fold%d — auc=%.3f n=%d",
+                      vname, g, fi, r$auc, r$n_stable))
+      r
+    })
     list(
-      auc              = res$auc,
-      brier            = res$brier,
-      n_stable         = res$n_stable,
-      stable           = res$stable,
-      best_screen_drop = best_row$screen_drop,
-      best_select_drop = best_row$select_drop,
-      best_pi_thr      = best_row$pi_thr
+      auc  = mean(vapply(per_fold, `[[`, numeric(1), "auc"), na.rm = TRUE),
+      aucs = vapply(per_fold, `[[`, numeric(1), "auc"),
+      sets = lapply(per_fold, `[[`, "stable")
     )
   })
 
-  # ── Jaccard across outer folds ───────────────────────────────────────────
-  sets     <- lapply(outer_results, `[[`, "stable")
-  jac_fn   <- function(a, b) length(intersect(a,b)) / max(length(union(a,b)), 1L)
-  jac_mean <- mean(combn(length(sets), 2,
-                         function(i) jac_fn(sets[[i[1]]], sets[[i[2]]]),
-                         simplify = TRUE))
+  best_g <- which.max(vapply(grid_res, `[[`, numeric(1), "auc"))
+  best   <- grid_res[[best_g]]
 
-  fold_df <- data.frame(
-    fold             = seq_along(outer_results),
-    auc              = vapply(outer_results, `[[`, numeric(1), "auc"),
-    brier            = vapply(outer_results, `[[`, numeric(1), "brier"),
-    n_stable         = vapply(outer_results, `[[`, numeric(1), "n_stable"),
-    best_pi_thr      = vapply(outer_results, `[[`, numeric(1), "best_pi_thr"),
-    best_screen_drop = vapply(outer_results, `[[`, numeric(1), "best_screen_drop"),
-    best_select_drop = vapply(outer_results, `[[`, numeric(1), "best_select_drop")
-  )
+  jac <- mean(combn(length(best$sets), 2,
+                    function(i) jac_fn(best$sets[[i[1]]], best$sets[[i[2]]]),
+                    simplify = TRUE))
+
+  message(sprintf(">>> [%s] DONE — best g%02d cv_auc=%.3f jaccard=%.3f",
+                  vname, best_g, best$auc, jac))
 
   list(
-    variant  = variant_name,
-    fold_df  = fold_df,
-    auc_mean = mean(fold_df$auc, na.rm = TRUE),
-    auc_sd   = sd(  fold_df$auc, na.rm = TRUE),
-    brier    = mean(fold_df$brier, na.rm = TRUE),
-    n_stable = mean(fold_df$n_stable, na.rm = TRUE),
-    jaccard  = jac_mean,
-    sets     = sets
+    variant  = vname,
+    best_row = GRID[best_g, ],
+    cv_auc   = best$auc,
+    cv_aucs  = best$aucs,
+    jaccard  = jac,
+    sets     = best$sets
   )
 }
 
-all_cv <- future_lapply(names(VARIANTS), nested_cv_variant,
-                        future.seed = TRUE)
-names(all_cv) <- names(VARIANTS)
+tune <- lapply(names(VARIANTS), tune_one)
+names(tune) <- names(VARIANTS)
 ```
 
 ## Results
 
-### Summary table
+### Variant selection
 
-```{r cv-table, eval=false}
-summary_tbl <- do.call(rbind, lapply(all_cv, function(r) {
+We assemble per-variant CV performance and stability, then apply the
+pre-registered **one-standard-error rule**: among variants whose mean CV AUC
+falls within one SE of the best, pick the most stable.
+
+```{r cv-select, eval=FALSE}
+# ── Nogueira Φ̂ helpers ───────────────────────────────────────────────────────
+.phi_hat <- function(sets, d) {
+  M     <- length(sets)
+  k_bar <- mean(sapply(sets, length))
+  if (k_bar == 0 || k_bar >= d) return(NA_real_)
+  pairs <- combn(M, 2, simplify = FALSE)
+  sym_d <- sapply(pairs, function(idx) {
+    a <- sets[[idx[1]]]; b <- sets[[idx[2]]]
+    length(a) + length(b) - 2L * length(intersect(a, b))
+  })
+  v_obs  <- mean(sym_d) / d
+  v_null <- 2 * k_bar * (d - k_bar) / d^2
+  1 - v_obs / v_null
+}
+
+.phi_se <- function(sets, d) {
+  M     <- length(sets)
+  k_bar <- mean(sapply(sets, length))
+  if (k_bar == 0 || k_bar >= d) return(NA_real_)
+  v_null <- 2 * k_bar * (d - k_bar) / d^2
+  pairs  <- combn(M, 2, simplify = FALSE)
+  v_ij   <- sapply(pairs, function(idx) {
+    a <- sets[[idx[1]]]; b <- sets[[idx[2]]]
+    (length(a) + length(b) - 2L * length(intersect(a, b))) / d
+  })
+  sd(v_ij) / (sqrt(length(v_ij)) * v_null)
+}
+
+d_total <- ncol(leukemia_X)
+
+summary_tbl <- do.call(rbind, lapply(tune, function(t) {
+  phi    <- .phi_hat(t$sets, d_total)
+  phi_se <- .phi_se(t$sets, d_total)
+  k_bar  <- mean(sapply(t$sets, length))
   data.frame(
-    Variant         = r$variant,
-    `AUC mean±SD`   = sprintf("%.3f ± %.3f", r$auc_mean, r$auc_sd),
-    Brier           = round(r$brier,   3),
-    `Mean |U|`      = round(r$n_stable, 1),
-    Jaccard         = round(r$jaccard,  3),
-    `Best pi_thr`   = names(sort(table(r$fold_df$best_pi_thr),
-                                 decreasing = TRUE))[1],
-    `Best sc_drop`  = names(sort(table(r$fold_df$best_screen_drop),
-                                 decreasing = TRUE))[1],
-    `Best sl_drop`  = names(sort(table(r$fold_df$best_select_drop),
-                                 decreasing = TRUE))[1],
-    check.names = FALSE
+    Variant        = t$variant,
+    CV_AUC         = round(t$cv_auc, 3),
+    CV_AUC_SE      = round(sd(t$cv_aucs, na.rm = TRUE) /
+                             sqrt(sum(!is.na(t$cv_aucs))), 3),
+    Jaccard        = round(t$jaccard, 3),
+    Phi            = round(phi, 3),
+    Phi_SE         = round(phi_se, 3),
+    k_bar          = round(k_bar, 1),
+    `Best pi_thr`  = t$best_row$pi_thr,
+    `Best sc_drop` = t$best_row$screen_drop,
+    check.names = FALSE, row.names = NULL
   )
 }))
-knitr::kable(summary_tbl, align = "lcccccc",
-             caption = "Nested CV summary across five outer folds.")
+
+# 1-SE rule on Φ̂; parsimony tiebreaker (smallest k̄)
+top     <- which.max(summary_tbl$Phi)
+cutoff  <- summary_tbl$Phi[top] - summary_tbl$Phi_SE[top]
+in_band <- summary_tbl[summary_tbl$Phi >= cutoff, ]
+best_v  <- in_band$Variant[which.min(in_band$k_bar)]
+
+knitr::kable(summary_tbl, align = "lcccccccc",
+             caption = "Validation-fold performance and stability per variant.")
+cat("Selected variant (1-SE on Φ̂, parsimony tiebreak):", best_v, "\n")
+```
+
+```{r show-summary, echo=FALSE}
+if (!is.null(sf_cache))
+  knitr::kable(sf_cache$summary_tbl, align = "lcccccccc",
+               caption = "Validation-fold performance and stability per variant.")
 ```
 
 ### Pairwise variant comparison
 
-Five outer folds give five paired AUC values per variant.  We test all 15
-pairs with a paired Wilcoxon test and apply Benjamini-Hochberg correction.
+The five validation folds give five paired AUC values per variant.  We test
+all 15 pairs with a paired Wilcoxon test and apply Benjamini-Hochberg
+correction.
 
-```{r pairwise, eval=false}
+```{r pairwise, eval=FALSE}
 pairs <- combn(names(VARIANTS), 2, simplify = FALSE)
 
 pw <- do.call(rbind, lapply(pairs, function(p) {
-  a <- all_cv[[p[1]]]$fold_df$auc
-  b <- all_cv[[p[2]]]$fold_df$auc
+  a <- tune[[p[1]]]$cv_aucs
+  b <- tune[[p[2]]]$cv_aucs
   wt <- wilcox.test(a, b, paired = TRUE, exact = FALSE)
   data.frame(`Method A` = p[1], `Method B` = p[2],
              `ΔAUC`     = round(mean(a - b, na.rm = TRUE), 3),
@@ -465,50 +721,174 @@ pw <- do.call(rbind, lapply(pairs, function(p) {
              check.names = FALSE)
 }))
 pw$`p-adj (BH)` <- round(p.adjust(pw$`p-value`, method = "BH"), 4)
-knitr::kable(pw, caption = "Pairwise Wilcoxon tests on outer-fold AUC.")
+knitr::kable(pw, caption = "Pairwise Wilcoxon tests on validation-fold AUC.")
+```
+
+```{r show-pairwise, echo=FALSE}
+if (!is.null(sf_cache))
+  knitr::kable(sf_cache$pw, caption = "Pairwise Wilcoxon tests on validation-fold AUC.")
 ```
 
 ### Jaccard stability
 
-```{r jaccard-plot, eval=false}
-#| fig-cap: "Mean Jaccard similarity of stable sets across the five outer folds. High values indicate SF selects the same genes regardless of which patients it trains on."
+```{r jaccard-plot, eval=FALSE}
+#| fig-cap: "Mean Jaccard similarity of stable sets across the five validation folds. High values indicate SF selects the same genes regardless of which patients it trains on."
 library(ggplot2)
 
-jac_df <- data.frame(
-  Variant = names(all_cv),
-  Jaccard = vapply(all_cv, `[[`, numeric(1), "jaccard")
+phi_df <- data.frame(
+  Variant = summary_tbl$Variant,
+  Phi     = summary_tbl$Phi,
+  Phi_SE  = summary_tbl$Phi_SE
 )
 
-ggplot(jac_df, aes(x = reorder(Variant, Jaccard), y = Jaccard)) +
+ggplot(phi_df, aes(x = reorder(Variant, Phi), y = Phi)) +
   geom_col(fill = "#1F77B4", width = 0.6) +
-  geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
-  scale_y_continuous(limits = c(0, 1)) +
+  geom_errorbar(aes(ymin = Phi - Phi_SE, ymax = Phi + Phi_SE),
+                width = 0.25, colour = "grey30") +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
   coord_flip() +
-  labs(title    = "Stable-set consistency across outer folds",
-       subtitle = "Dashed line = 0.5 reference",
-       x = NULL, y = "Mean pairwise Jaccard") +
+  labs(title    = "Nogueira size-corrected stability per variant",
+       subtitle = "Error bars = ±1 SE  |  Dashed line = random-selection null (Φ̂ = 0)",
+       x = NULL, y = expression(hat(Phi))) +
   theme_bw()
 ```
 
+```{r show-jaccard, echo=FALSE}
+#| fig-cap: "Mean Jaccard similarity of stable sets across the five validation folds. High values indicate SF selects the same genes regardless of which patients it trains on."
+if (!is.null(sf_cache)) print(sf_cache$p_jaccard)
+```
+
+### Final models and held-out test evaluation
+
+We refit **every** variant on the full train+validation set at its locked
+hyperparameters, then score each on the vaulted test set — the single time
+the test data is touched. Because variant selection was committed on the
+validation folds, each test AUC is an honest estimate of that variant's
+generalisation (`best_v` is simply the one we'd deploy). Each
+`final_models[[v]]$fit` is a complete `shapleyforest` object you can pass
+straight to `plot_stability()`, `plot_importance()`, or mine for
+`final_SHAP` / `feature_list` / `stability_freq`.
+
+```{r final-models, eval=FALSE}
+final_models <- lapply(names(VARIANTS), function(vname) {
+  variant <- VARIANTS[[vname]]
+  row     <- tune[[vname]]$best_row
+
+  sc <- screen_control(
+    drop_fraction = row$screen_drop,
+    min_ntree     = 500L
+  )
+  sl <- select_control(
+    drop_fraction    = row$select_drop,
+    pi_thr           = row$pi_thr,
+    n_boots          = 25L,
+    min_ntree        = 500L,
+    shadow_mode      = variant$shadow_mode,
+    use_dml_residual = variant$use_dml_residual,
+    dml_scope        = variant$dml_scope
+  )
+
+  set.seed(42)
+  fit <- sf(X_tv, y_tv,
+            module_membership = module_membership,   # global, from WGCNA section
+            screen_params     = sc,
+            select_params     = sl,
+            backend           = "python",
+            seed              = 42L,
+            verbose           = 0L)
+
+  stable <- fit$feature_list$feature_name
+  rf <- ranger::ranger(
+    y ~ ., probability = TRUE, num.trees = 300L, seed = 1L,
+    data = data.frame(y = factor(y_tv), X_tv[, stable, drop = FALSE])
+  )
+  prob <- predict(rf, data.frame(X_test[, stable, drop = FALSE]))$predictions[, 2]
+
+  list(
+    fit        = fit,                       # full SF object for your own plots
+    test_auc   = as.numeric(pROC::auc(y_test, prob, quiet = TRUE)),
+    test_brier = mean((prob - y_test)^2),
+    n_stable   = length(stable)
+  )
+})
+names(final_models) <- names(VARIANTS)
+
+# Honest test-vault performance per variant (selected variant flagged)
+test_tbl <- data.frame(
+  Variant    = names(final_models),
+  Test_AUC   = round(vapply(final_models, `[[`, numeric(1), "test_auc"),   3),
+  Test_Brier = round(vapply(final_models, `[[`, numeric(1), "test_brier"), 3),
+  n_stable   = vapply(final_models, `[[`, integer(1), "n_stable"),
+  Selected   = ifelse(names(final_models) == best_v, "<<", ""),
+  row.names  = NULL
+)
+knitr::kable(test_tbl, align = "lcccc",
+             caption = "Held-out test-vault performance (selection made on validation only).")
+```
+
+```{r show-test, echo=FALSE}
+if (!is.null(sf_cache))
+  knitr::kable(sf_cache$test_tbl, align = "lcccc",
+               caption = "Held-out test-vault performance (selection made on validation only).")
+```
+
+The test vault is small (~15% of an already small cohort), so read these
+numbers as noisy point estimates — the validation-fold distributions and the
+pairwise Wilcoxon table above remain the stronger basis for *comparing*
+variants. The vault's job is to hand the deployed model one selection-free
+generalisation figure.
+
 ### Biological validation
 
-```{r bio, eval=false}
-# Best-performing variant by mean outer AUC
-best_v  <- names(which.max(vapply(all_cv, `[[`, numeric(1), "auc_mean")))
-cat("Best variant:", best_v, "\n")
+For the BCR/ABL-vs-NEG contrast we use an **annotation-free** sanity check: do
+the genes SF deems stable line up with the genes that simply separate the two
+subtypes best on their own (largest |t-statistic|)? If the deployed stable set
+recovers most of the top univariate hits, SF is capturing the dominant
+molecular-subtype signal rather than fitting noise — and it does so while
+controlling for the module-correlation structure a plain t-test ignores.
 
-# Union of stable sets across the five outer folds
-stable_union <- Reduce(union, all_cv[[best_v]]$sets)
-cat("Union stable set size:", length(stable_union), "\n")
+```{r bio, eval=FALSE}
+cat("Selected variant:", best_v, "\n")
 
-# A few well-known B-cell / T-cell markers from the HGU95Av2 platform
-# (probe-set IDs; will be present only if they fall in the top-500 by variance)
-known_bcell <- c("1303_at",  "32069_at")   # CD19, PAX5 proxies
-known_tcell <- c("38319_at", "1827_s_at")  # CD3D, CD3E proxies
-cat("B-cell markers recovered:", sum(known_bcell %in% stable_union),
-    "/", length(known_bcell), "\n")
-cat("T-cell markers recovered:", sum(known_tcell %in% stable_union),
-    "/", length(known_tcell), "\n")
+# Deployed stable set (selected variant, refit on full train+val)
+stable_final <- final_models[[best_v]]$fit$feature_list$feature_name
+cat("Deployed stable set size:", length(stable_final), "\n")
+
+# Robustness view: union of the selected variant's stable sets across val folds
+stable_union <- Reduce(union, tune[[best_v]]$sets)
+cat("Union stable set across validation folds:", length(stable_union), "\n")
+
+# Recovery of the strongest univariate BCR/ABL-vs-NEG signal (annotation-free):
+# how many of the top-30 |t-stat| probes land in the deployed stable set?
+tstats  <- apply(X_tv, 2, function(col)
+  t.test(col[y_tv == 1], col[y_tv == 0])$statistic)
+top_t   <- names(sort(abs(tstats), decreasing = TRUE))[1:30]
+cat("Top-30 |t-stat| probes recovered in deployed set:",
+    length(intersect(top_t, stable_final)), "/ 30\n")
+```
+
+```{r save-results, eval=FALSE}
+library(ggplot2)
+saveRDS(
+  list(
+    p_stability  = plot_stability(fit),
+    p_importance = plot_importance(fit, top_n = 20),
+    p_jaccard    = ggplot(phi_df, aes(x = reorder(Variant, Phi), y = Phi)) +
+                     geom_col(fill = "#1F77B4", width = 0.6) +
+                     geom_errorbar(aes(ymin = Phi - Phi_SE, ymax = Phi + Phi_SE),
+                                   width = 0.25, colour = "grey30") +
+                     geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+                     coord_flip() +
+                     labs(title    = "Nogueira size-corrected stability per variant",
+                          subtitle = "Error bars = ±1 SE  |  Dashed line = random-selection null (Φ̂ = 0)",
+                          x = NULL, y = expression(hat(Phi))) +
+                     theme_bw(),
+    summary_tbl  = summary_tbl,
+    pw           = pw,
+    test_tbl     = test_tbl
+  ),
+  "leukemia_results.rds"
+)
 ```
 
 ---
@@ -517,14 +897,15 @@ cat("T-cell markers recovered:", sum(known_tcell %in% stable_union),
 
 | Item | Source |
 |------|--------|
-| AUC mean ± SD per variant | `summary_tbl` |
-| Brier score | `summary_tbl` |
-| Mean stable set size |U| | `summary_tbl` |
-| Most-chosen tuned parameters | mode of `fold_df$best_*` columns |
+| Validation-fold AUC + stability per variant | `summary_tbl` |
+| Held-out test AUC / Brier per variant | `test_tbl` |
+| Selected variant (1-SE rule) | `best_v` |
+| Locked tuned hyperparameters | `summary_tbl` Best * columns |
 | Pairwise variant comparison | paired Wilcoxon + BH table |
-| Jaccard across outer folds | bar chart |
+| Jaccard across validation folds | bar chart |
 | Soft-threshold power justification | R² + connectivity plots |
-| Biological overlap | union stable set vs known markers |
+| Biological overlap | deployed stable set vs known markers |
+| Fitted models for plotting | `final_models[[v]]$fit` |
 
 ---
 

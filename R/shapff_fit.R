@@ -372,12 +372,20 @@ sf <- function(X, y,
 
   final_X    <- X[, stable_features, drop = FALSE]
   current_p  <- ncol(final_X)
+
+  if (current_p == 0L) {
+    # empty stable set: return a valid (predictor-less) fit instead of letting
+    # ranger error on a zero-covariate design
+    if (verbose >= 1L)
+      cat("No stable features selected; skipping final model.\n")
+    final_rf <- NULL
+  } else {
   final_mtry <- {
     base <- switch(sl$mtry_rule,
       sqrt     = sqrt(current_p),
       p_over_3 = current_p / 3,
       if (CLASSIFICATION) current_p / 3 else sqrt(current_p))   # "auto"
-    min(ceiling(sl$mtry_factor * base), current_p)
+    max(1L, min(ceiling(sl$mtry_factor * base), current_p))
   }
 
   final_rf <- ranger::ranger(
@@ -392,6 +400,7 @@ sf <- function(X, y,
     num.threads   = as.integer(num_processors),
     seed          = as.integer(seed)
   )
+  }
 
   final_module_membership <- data.frame(
     feature_name = names(final_X),

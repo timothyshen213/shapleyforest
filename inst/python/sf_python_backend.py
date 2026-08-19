@@ -859,6 +859,10 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
         else:
             y_arr = y
         _using_resid = (y_override is not None) or (is_indep and use_dml_residual)
+        # A DML-residualized target is CONTINUOUS even for a classification task,
+        # so this pool's shadow-stability RF must be fit as a REGRESSOR (else the
+        # residual is cast to int -> degenerate).
+        pool_classification = classification and not _using_resid
         if verbose: print(f"shadow stability on {label}: {len(col_idx)} features"
               + (" [y=y_resid]" if _using_resid else ""))
         names_sort, freqs_sort = _boruta_shadow_stability(
@@ -870,7 +874,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
             ntree_factor     = ntree_factor,
             min_ntree        = min_ntree,
             nodesize         = nodesize,
-            classification   = classification,
+            classification   = pool_classification,
             seed             = seed + seed_offset,
             n_jobs           = n_jobs,
             use_shap         = use_shap,

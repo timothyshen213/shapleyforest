@@ -58,6 +58,11 @@ sf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
     stop("Package 'reticulate' is required. Install with: install.packages('reticulate')",
          call. = FALSE)
 
+  # backend verbose output contains non-ASCII characters; without this,
+  # ASCII-locale sessions crash with UnicodeEncodeError at verbose >= 2
+  if (!nzchar(Sys.getenv("PYTHONIOENCODING")))
+    Sys.setenv(PYTHONIOENCODING = "utf-8")
+
   py_file <- system.file("python", "sf_python_backend.py",
                           package = "shapleyforest")
   if (!nzchar(py_file) || !file.exists(py_file))

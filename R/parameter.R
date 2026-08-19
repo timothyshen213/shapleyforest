@@ -30,7 +30,6 @@ screen_control <- function(drop_fraction = 0.25,
                             min_ntree     = 500L,
                             ntree_factor  = 1) {
   mtry_rule <- match.arg(mtry_rule, c("auto", "sqrt", "p_over_3"))
-  if (ntree_factor <= 0) stop("ntree_factor must be > 0", call. = FALSE)
   obj <- list(
     drop_fraction = as.numeric(drop_fraction),
     keep_fraction = as.numeric(keep_fraction),

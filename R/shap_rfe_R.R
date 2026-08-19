@@ -567,6 +567,31 @@
 }
 
 
+# ── DML cross-fitted residualization (R backend, mirrors Python) ─────────────
+.cross_fit_residuals_R <- function(X_corr, y_num, k_folds = 5L, ntree = 300L,
+                                    mtry_factor = 1, nodesize = 5L,
+                                    seed = 42L, num_processors = 1L) {
+  n <- length(y_num); p_corr <- ncol(X_corr)
+  set.seed(seed)
+  perm     <- sample.int(n)
+  fold_ids <- integer(n)
+  for (k in seq_len(k_folds)) fold_ids[perm[seq(k, n, by = k_folds)]] <- k
+  y_hat <- numeric(n)
+  mtry  <- max(1L, min(p_corr, ceiling(mtry_factor * sqrt(p_corr))))
+  for (k in seq_len(k_folds)) {
+    tr <- which(fold_ids != k); te <- which(fold_ids == k)
+    rf <- ranger::ranger(x = X_corr[tr, , drop = FALSE], y = y_num[tr],
+                         num.trees = as.integer(ntree), mtry = mtry,
+                         min.node.size = as.integer(nodesize),
+                         probability = FALSE, verbose = FALSE,
+                         num.threads = as.integer(num_processors),
+                         seed = as.integer(seed + k * 1999L))
+    y_hat[te] <- stats::predict(rf, data = X_corr[te, , drop = FALSE])$predictions
+  }
+  y_num - y_hat
+}
+
+
 # ── Phase 2: Shadow-stability selection (R backend) ──────────────────────────
 
 .sf_R_select <- function(X_surv, y, survivor_list, select_params,
@@ -576,129 +601,144 @@
   CLASSIFICATION <- is.factor(y)
   n              <- nrow(X_surv)
   all_feats      <- colnames(X_surv)
-  shadow_pct     <- sl$shadow_percentile / 100.0   # 95 -> 0.95
+  shadow_pct     <- sl$shadow_percentile / 100.0
 
-  # Pool grouping
-  shadow_mode <- sl$shadow_mode
-  if (!shadow_mode %in% c("within_module", "split")) shadow_mode <- "split"
+  y_num     <- if (CLASSIFICATION) as.numeric(as.integer(y)) else as.numeric(y)
+  indep_set <- if (!is.null(sl$indep_modules)) as.character(sl$indep_modules) else character(0L)
 
-  if (shadow_mode == "within_module") {
-    pools          <- split(all_feats, module_membership_surv[all_feats])
-    use_elbow_pool <- TRUE
-  } else {
-    pools          <- list(all = all_feats)
-    use_elbow_pool <- FALSE
+  # DML residualized target for the independent pool (scope = "indep")
+  y_for_ind <- y_num
+  if (isTRUE(sl$use_dml_residual) && identical(sl$dml_scope, "indep") &&
+      length(indep_set) > 0L) {
+    corr_feats <- all_feats[!(module_membership_surv[all_feats] %in% indep_set)]
+    if (length(corr_feats) > 0L) {
+      if (verbose) cat(sprintf("  DML: residualizing y by %d corr features (%d folds)\n",
+                               length(corr_feats), sl$dml_n_folds))
+      y_for_ind <- .cross_fit_residuals_R(
+        X_surv[, corr_feats, drop = FALSE], y_num,
+        k_folds = sl$dml_n_folds, ntree = sl$dml_ntree,
+        mtry_factor = sl$mtry_factor, nodesize = nodesize,
+        seed = seed + 88317L, num_processors = num_processors)
+    }
   }
 
-  pool_stability <- vector("list", length(pools))
-  pool_nms       <- names(pools)
-  all_stable     <- character(0L)
-
-  for (pi in seq_along(pool_nms)) {
-    pool_nm    <- pool_nms[pi]
-    pool_feats <- pools[[pool_nm]]
-    np         <- length(pool_feats)
-    if (np == 0L) next
-
-    if (verbose)
-      cat(sprintf("  Shadow stability — pool '%s' (%d features, %d boots) ...\n",
-                  pool_nm, np, sl$n_boots))
-
-    freq_map   <- setNames(integer(np), pool_feats)
-    prev_freqs <- NULL
-    n_done     <- 0L
-
+  # ── inner: one pool's shadow-bootstrap loop ────────────────────────────────
+  run_pool <- function(pool_feats, y_pool, classif_pool, pool_seed) {
+    np <- length(pool_feats)
+    freq_map <- setNames(integer(np), pool_feats)
+    prev_freqs <- NULL; n_done <- 0L
     for (b in seq_len(sl$n_boots)) {
-      bseed <- seed + b * 97L
+      bseed <- pool_seed + b * 97L
       set.seed(bseed)
-
-      idx  <- sample.int(n, max(1L, floor(n / 2L)), replace = FALSE)
-      Xb   <- X_surv[idx, pool_feats, drop = FALSE]
-      yb   <- y[idx]
-
-      # Augment with permuted shadow columns
+      idx <- sample.int(n, max(1L, floor(n / 2L)), replace = FALSE)
+      Xb  <- X_surv[idx, pool_feats, drop = FALSE]
+      yb  <- y_pool[idx]
       Xb_aug   <- Xb
       shad_nms <- paste0("__shad__", pool_feats)
       for (fi in seq_along(pool_feats))
         Xb_aug[[shad_nms[fi]]] <- sample(Xb[[pool_feats[fi]]])
-
       cp_aug  <- ncol(Xb_aug)
-      n_trees <- max(as.integer(sl$min_ntree),
-                     as.integer(sl$ntree_factor * cp_aug))
-      mtry_r  <- .compute_mtry_aug_R(np, sl$mtry_factor, CLASSIFICATION,
+      n_trees <- max(as.integer(sl$min_ntree), as.integer(sl$ntree_factor * cp_aug))
+      mtry_r  <- .compute_mtry_aug_R(np, sl$mtry_factor, classif_pool,
                                      sl$mtry_rule, sl$mtry_on_real)
-
       rf_b <- ranger::ranger(
-        x             = Xb_aug,
-        y             = yb,
-        mtry          = mtry_r,
-        num.trees     = n_trees,
-        importance    = "permutation",
-        min.node.size = as.integer(nodesize),
-        probability   = CLASSIFICATION,
-        verbose       = FALSE,
-        num.threads   = as.integer(num_processors),
-        seed          = as.integer(bseed)
-      )
-
+        x = Xb_aug, y = yb, mtry = mtry_r, num.trees = n_trees,
+        importance = "permutation", min.node.size = as.integer(nodesize),
+        probability = classif_pool, verbose = FALSE,
+        num.threads = as.integer(num_processors), seed = as.integer(bseed))
       vim_b    <- rf_b$variable.importance
-      real_vim <- vim_b[pool_feats]
-      shad_vim <- vim_b[shad_nms]
-
+      real_vim <- vim_b[pool_feats]; shad_vim <- vim_b[shad_nms]
       shad_thr <- stats::quantile(shad_vim, probs = shadow_pct, na.rm = TRUE)
       winners  <- pool_feats[!is.na(real_vim) & real_vim > shad_thr]
       freq_map[winners] <- freq_map[winners] + 1L
       n_done <- n_done + 1L
-
-      # adaptive early stopping: halt once frequencies have converged
       if (isTRUE(sl$early_stop_boots) &&
           (b %% as.integer(sl$early_stop_check_every)) == 0L) {
-        cur_freqs <- freq_map / n_done
+        cur <- freq_map / n_done
         if (!is.null(prev_freqs) &&
-            max(abs(cur_freqs - prev_freqs)) < as.numeric(sl$early_stop_tol)) break
-        prev_freqs <- cur_freqs
+            max(abs(cur - prev_freqs)) < as.numeric(sl$early_stop_tol)) break
+        prev_freqs <- cur
+      }
+    }
+    fr  <- freq_map / max(1L, n_done)
+    ord <- order(fr, decreasing = TRUE)
+    list(names = pool_feats[ord], freqs = as.numeric(fr[ord]))
+  }
+
+  # ── build pool specs (name, feats, is_indep) ───────────────────────────────
+  shadow_mode <- sl$shadow_mode
+  if (!shadow_mode %in% c("within_module", "split")) shadow_mode <- "split"
+  pool_specs <- list()
+  if (shadow_mode == "within_module") {
+    grp <- split(all_feats, module_membership_surv[all_feats])
+    for (nm in names(grp))
+      pool_specs[[length(pool_specs) + 1L]] <-
+        list(name = nm, feats = grp[[nm]], is_indep = nm %in% indep_set)
+  } else if (length(indep_set) > 0L) {
+    corr_feats  <- all_feats[!(module_membership_surv[all_feats] %in% indep_set)]
+    indep_feats <- all_feats[  module_membership_surv[all_feats] %in% indep_set]
+    if (length(corr_feats)  > 0L)
+      pool_specs[[length(pool_specs)+1L]] <- list(name="corr",  feats=corr_feats,  is_indep=FALSE)
+    if (length(indep_feats) > 0L)
+      pool_specs[[length(pool_specs)+1L]] <- list(name="indep", feats=indep_feats, is_indep=TRUE)
+  } else {
+    pool_specs[[1L]] <- list(name = "all", feats = all_feats, is_indep = FALSE)
+  }
+
+  pool_stability <- list(); all_stable <- character(0L)
+  for (si in seq_along(pool_specs)) {
+    ps <- pool_specs[[si]]
+    if (length(ps$feats) == 0L) next
+
+    # DML-residualized target -> CONTINUOUS -> fit this pool as REGRESSION
+    y_pool <- y; classif_pool <- CLASSIFICATION; use_resid <- FALSE
+    if (isTRUE(sl$use_dml_residual)) {
+      if (identical(sl$dml_scope, "all_modules")) {
+        other <- setdiff(all_feats, ps$feats)
+        if (length(other) > 0L) {
+          y_pool <- .cross_fit_residuals_R(
+            X_surv[, other, drop = FALSE], y_num,
+            k_folds = sl$dml_n_folds, ntree = sl$dml_ntree,
+            mtry_factor = sl$mtry_factor, nodesize = nodesize,
+            seed = seed + 88317L + si * 997L, num_processors = num_processors)
+          classif_pool <- FALSE; use_resid <- TRUE
+        }
+      } else if (ps$is_indep) {           # scope = "indep"
+        y_pool <- y_for_ind; classif_pool <- FALSE; use_resid <- TRUE
       }
     }
 
-    freqs_raw <- freq_map / max(1L, n_done)
-    ord       <- order(freqs_raw, decreasing = TRUE)
-    names_s   <- pool_feats[ord]
-    freqs_s   <- freqs_raw[ord]
+    if (verbose)
+      cat(sprintf("  Shadow stability - pool '%s' (%d feats, %d boots)%s ...\n",
+                  ps$name, length(ps$feats), sl$n_boots,
+                  if (use_resid) " [y=y_resid -> regression]" else ""))
 
-    if (identical(sl$threshold_mode, "elbow")) use_elbow_pool <- TRUE
-    res <- .apply_stable_threshold_R(names_s, freqs_s,
-                                      sl$pi_thr,
+    rp <- run_pool(ps$feats, y_pool, classif_pool, seed + si)
+
+    use_elbow_pool <- identical(sl$threshold_mode, "elbow") || ps$is_indep
+    thr_val <- if (ps$is_indep && !is.null(sl$pi_thr_indep))
+                 as.numeric(sl$pi_thr_indep) else as.numeric(sl$pi_thr)
+    if (ps$is_indep && is.null(sl$pi_thr_indep)) use_elbow_pool <- TRUE
+    res <- .apply_stable_threshold_R(rp$names, rp$freqs, thr_val,
                                       use_elbow = use_elbow_pool)
     all_stable <- c(all_stable, res$stable)
-
-    pool_stability[[pi]] <- list(
-      pool          = pool_nm,
-      feature_names = names_s,
-      freqs         = as.numeric(freqs_s),
-      threshold     = res$threshold,
-      selected      = names_s %in% res$stable,
-      elbow_rank    = res$elbow_rank
-    )
+    pool_stability[[length(pool_stability) + 1L]] <- list(
+      pool = ps$name, feature_names = rp$names, freqs = rp$freqs,
+      threshold = res$threshold, selected = rp$names %in% res$stable,
+      elbow_rank = res$elbow_rank)
   }
 
   stable_features    <- unique(all_stable)
   stability_freq_map <- setNames(numeric(length(stable_features)), stable_features)
   for (ps in pool_stability) {
-    if (is.null(ps)) next
     idx_s <- ps$feature_names %in% stable_features
     stability_freq_map[ps$feature_names[idx_s]] <- ps$freqs[idx_s]
   }
-
   selection_list <- list(data.frame(
-    feature_name        = all_feats,
-    variable_importance = NA_real_,
-    stringsAsFactors    = FALSE
-  ))
+    feature_name = all_feats, variable_importance = NA_real_,
+    stringsAsFactors = FALSE))
 
-  list(
-    stable_features = stable_features,
-    stability_freq  = stability_freq_map,
-    selection_list  = selection_list,
-    pool_stability  = Filter(Negate(is.null), pool_stability)
-  )
+  list(stable_features = stable_features, stability_freq = stability_freq_map,
+       selection_list = selection_list,
+       pool_stability = Filter(Negate(is.null), pool_stability))
 }

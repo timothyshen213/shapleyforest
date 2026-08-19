@@ -1,0 +1,986 @@
+---
+title: "ShapleyForest on Simulated Data: Module-Based DGM"
+author: "Timothy Shen"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: false
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+vignette: >
+  %\VignetteIndexEntry{Shapley Forest on Simulated Data}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
+```
+
+# Introduction
+
+This vignette runs the full Shapley Forest (SF) pipeline on a **synthetic dataset
+with known ground truth**, allowing direct evaluation of whether SF selects the
+correct features rather than merely stable or predictive ones.
+
+The vignette is structured in four stages:
+
+1. Data generation and ground truth definition
+2. WGCNA module detection
+3. Single SF run and output for exploration purposes
+4. Six-variant cross-validated comparison with ground-truth evaluation
+
+---
+
+# Data Generation
+
+## Simulation design
+
+We generate a co-expression network with **10 modules of 100 features each**
+(1 000 features total) using a preferential-attachment graph per module,
+mirroring the benchmark DGM used to evaluate SF variants.
+
+**Network structure.** Modules 1–9 are correlated: within each module, a
+Barabási–Albert preferential-attachment graph is built, its weighted adjacency
+matrix forms the covariance, and features are sampled from
+$\mathcal{MVN}(0, \Sigma)$.  Module 10 is fully independent ($\text{iid}\;\mathcal{N}(0,1)$).
+Sparse random edges between modules add realistic cross-module bleed.
+
+**Ground truth.** Three features from each of two correlated modules (M1, M2)
+and three from the independent module (M10) are causal — nine signals total, all
+carrying the same coefficient magnitudes $\boldsymbol{\beta} = (12, 12, 10)$.
+The equal signal magnitude across correlated and independent sources directly
+tests whether SF's split-pool and DML designs help it recover features from
+both sources simultaneously.
+
+```{r packages}
+#| warning: false
+#| message: false
+
+if (!require("devtools", quietly = TRUE))
+    install.packages("devtools")
+library(devtools)
+devtools::install_github("timothyzshen/shapleyforest")
+
+library(shapleyforest)
+library(WGCNA)
+library(igraph)
+library(MASS)
+library(Matrix)
+```
+
+```{r dgm-fns}
+# ── Network X generator: PA topology + eigengene loadings ────────────────────
+# Each correlated module has a latent eigengene E_k ~ N(0,1).
+# Feature j loads on E_k with strength proportional to its PA degree:
+#   X_{k,j} = λ_j * E_k + sqrt(1 - λ_j²) * ε_j,  ε_j ~ N(0,1)
+# giving Cor(X_{k,i}, X_{k,j}) = λ_i * λ_j — strong for hub pairs, weak for
+# peripheral pairs, exactly the structure WGCNA's TOM is designed to detect.
+# Causal features are sampled at random positions, independent of hub status.
+generate_X <- function(
+    n,
+    n_modules   = 10L,   # total modules; last is always the independent pool
+    module_size = 100L,  # features per module (equal across all modules)
+    lambda_min  = 0.5,   # eigengene loading for lowest-degree (peripheral) nodes
+    lambda_max  = 0.9,   # eigengene loading for highest-degree (hub) nodes
+    seed        = NULL
+) {
+  if (!is.null(seed)) set.seed(seed)
+
+  n_corr <- n_modules - 1L
+  p_corr <- n_corr * module_size
+
+  X_corr     <- matrix(0.0, n, p_corr)
+  lambdas    <- numeric(p_corr)
+  causal_pos <- vector("list", n_corr)
+
+  for (k in seq_len(n_corr)) {
+    m_k  <- min(3L, max(1L, floor(module_size / 10L)))
+    gk   <- igraph::sample_pa(module_size, power = 1L, m = m_k, directed = FALSE)
+    deg  <- igraph::degree(gk)
+
+    # Loadings scale monotonically with degree: leaf → lambda_min, hub → lambda_max
+    lambda_k <- lambda_min + (lambda_max - lambda_min) *
+                (deg - min(deg)) / max(max(deg) - min(deg), 1L)
+
+    E_k  <- rnorm(n)   # latent module eigengene
+    cols <- ((k - 1L) * module_size + 1L):(k * module_size)
+
+    eps  <- matrix(rnorm(n * module_size), n, module_size)
+    eps  <- t(t(eps) * sqrt(pmax(1 - lambda_k^2, 1e-8)))  # per-feature noise SD
+    X_corr[, cols] <- outer(E_k, lambda_k) + eps
+    lambdas[cols]  <- lambda_k
+
+    # Causal features: 3 random positions, independent of hub status
+    causal_pos[[k]] <- sort(sample(module_size, 3L))
+  }
+
+  X_corr <- scale(X_corr)
+
+  # Independent module: pure iid N(0, 1)
+  X_indep      <- scale(matrix(rnorm(n * module_size), n, module_size))
+  causal_indep <- sort(sample(module_size, 3L))
+
+  # Module-aware column names: M1_V1 … M10_V100
+  cn_corr  <- unlist(lapply(seq_len(n_corr),
+    function(k) paste0("M", k, "_V", seq_len(module_size))))
+  cn_indep <- paste0("M", n_modules, "_V", seq_len(module_size))
+  colnames(X_corr)  <- cn_corr
+  colnames(X_indep) <- cn_indep
+  X <- as.data.frame(cbind(X_corr, X_indep))
+
+  membership <- setNames(
+    c(rep(paste0("M", seq_len(n_corr)), each = module_size),
+      rep(paste0("M", n_modules, "_indep"), module_size)),
+    colnames(X)
+  )
+
+  T_large <- cn_corr[(0L * module_size) + causal_pos[[1L]]]
+  T_small <- cn_corr[(1L * module_size) + causal_pos[[2L]]]
+  T_ind   <- cn_indep[causal_indep]
+
+  list(
+    X          = X,
+    membership = membership,
+    T_large    = T_large,
+    T_small    = T_small,
+    T_ind      = T_ind,
+    T_all      = c(T_large, T_small, T_ind),
+    lambdas    = setNames(c(lambdas, rep(NA_real_, module_size)), colnames(X))
+  )
+}
+
+# ── DGM 1: pure linear, β = (12, 12, 10) per triplet ────────────────────────
+make_y_linear <- function(X, T_large, T_small, T_ind, noise_sd = 1.0, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  Xm   <- as.matrix(X)
+  beta <- setNames(rep(0, ncol(Xm)), colnames(Xm))
+  beta[T_large] <- c(12, 12, 10)
+  beta[T_small] <- c(12, 12, 10)
+  beta[T_ind]   <- c(12, 12, 10)
+  as.numeric(Xm %*% beta + rnorm(nrow(Xm), 0, noise_sd))
+}
+```
+
+```{r dgm}
+if (file.exists("simulation_data.rds")) {
+  .d      <- readRDS("simulation_data.rds")
+  sim_X        <- .d$sim_X
+  sim_y        <- .d$sim_y
+  true_modules <- .d$true_modules
+  T_large      <- .d$T_large
+  T_small      <- .d$T_small
+  T_ind        <- .d$T_ind
+  T_all        <- .d$T_all
+  rm(.d)
+} else {
+  dgm <- generate_X(
+    n           = 200L,     # ≥200 required for reliable WGCNA module detection
+    n_modules   = 10L,
+    module_size = 100L,
+    seed        = 2026L
+  )
+  sim_X        <- dgm$X
+  true_modules <- dgm$membership
+  T_large      <- dgm$T_large    # M1 causal: 3 randomly sampled positions
+  T_small      <- dgm$T_small    # M2 causal: 3 randomly sampled positions
+  T_ind        <- dgm$T_ind      # M10 causal: 3 randomly sampled positions
+  T_all        <- dgm$T_all      # all 9 signal features
+
+  y_cont <- make_y_linear(sim_X, T_large, T_small, T_ind, noise_sd = 1.0, seed = 2026L)
+  sim_y  <- as.integer(y_cont > median(y_cont))
+}
+```
+
+```{r save-sim-data, eval=FALSE}
+saveRDS(
+  list(sim_X = sim_X, sim_y = sim_y, true_modules = true_modules,
+       T_large = T_large, T_small = T_small, T_ind = T_ind, T_all = T_all),
+  "simulation_data.rds"
+)
+```
+
+```{r wgcna-run}
+# Soft-thresholding power: lowest power where scale-free R² ≥ 0.80
+sft <- WGCNA::pickSoftThreshold(
+  sim_X,
+  powerVector = c(1:10, seq(12, 20, 2)),
+  verbose     = 0,
+  networkType = "signed"
+)
+power_sel <- with(sft$fitIndices,
+  Power[which(SFT.R.sq >= 0.80 & slope < 0)[1]])
+if (is.na(power_sel)) power_sel <- 12L
+cat("Soft-thresholding power:", power_sel, "\n")
+
+net <- WGCNA::blockwiseModules(
+  sim_X,
+  power          = power_sel,
+  networkType    = "signed",
+  TOMType        = "signed",
+  minModuleSize  = 30L,
+  mergeCutHeight = 0.25,
+  numericLabels  = FALSE,
+  verbose        = 0
+)
+wgcna_colors <- net$colors
+cat("WGCNA modules :", length(unique(wgcna_colors)) - 1L, "(excl. grey)\n")
+cat("Grey features  :", sum(wgcna_colors == "grey"), "/", ncol(sim_X), "\n")
+```
+
+```{r wgcna-compare}
+# For each true correlated module, find best-matching WGCNA colour and
+# compute precision/recall. M10_indep features are expected to go grey.
+recovery_tbl <- do.call(rbind, lapply(
+  setdiff(unique(true_modules), "M10_indep"),
+  function(tm) {
+    true_feat <- names(true_modules)[true_modules == tm]
+    best_col  <- names(which.max(table(wgcna_colors[true_feat])))
+    recovered <- names(wgcna_colors)[wgcna_colors == best_col]
+    tp        <- length(intersect(true_feat, recovered))
+    data.frame(
+      True_module = tm,
+      WGCNA_color = best_col,
+      True_n      = length(true_feat),
+      WGCNA_n     = length(recovered),
+      Overlap     = tp,
+      Precision   = round(tp / length(recovered), 3),
+      Recall      = round(tp / length(true_feat),  3),
+      row.names   = NULL
+    )
+  }
+))
+knitr::kable(recovery_tbl, align = "lcccccc",
+             caption = "WGCNA module recovery vs. true modules (M10_indep expected grey).")
+```
+
+```{r module-membership-true}
+# Use the ground-truth module labels directly — the same approach as the
+# benchmark (pilot_v3.R passes dat$membership straight to sf()).
+# WGCNA is shown below for exploration only; with n=200 and a PA network it
+# cannot reliably recover the true blocks.
+module_membership <- true_modules
+# SF identifies the independent pool by name:
+module_membership[module_membership == "M10_indep"] <- "M10_indep"  # kept as-is
+```
+
+```{r sim-summary}
+cat("Samples :", nrow(sim_X), "\n")
+cat("Features:", ncol(sim_X), "  (9 correlated modules + 1 independent × 100 each)\n")
+cat("Causal  :", length(T_all), "features —",
+    paste(T_all, collapse = ", "), "\n")
+cat("Outcome :", paste(names(table(sim_y)), collapse = " / "),
+    "→", paste(table(sim_y), collapse = " / "), "\n")
+```
+
+```{r results-cache, echo=FALSE}
+sim_cache <- if (file.exists("simulation_results.rds")) readRDS("simulation_results.rds") else NULL
+```
+
+The nine causal features carry equal signal magnitude whether they sit inside a
+correlated module (M1, M2) or the fully independent module (M10).  A method
+that handles only one pool will miss the other.
+
+---
+
+# Single SF Run
+
+We fit SF once on the full dataset to explore its output before the formal
+comparison.
+
+```{r sf-setup, eval=FALSE}
+sf_setup()
+```
+
+```{r single-run, eval=FALSE}
+sc_single <- screen_control(min_ntree = 500L)
+sl_single <- select_control(min_ntree = 500L, n_boots = 50L,
+                             indep_modules = "M10_indep")
+
+fit <- sf(
+  X                 = sim_X,
+  y                 = sim_y,
+  module_membership = module_membership,
+  screen_params     = sc_single,
+  select_params     = sl_single,
+  backend           = "python",
+  verbose           = 1L,
+  seed              = 2026L
+)
+```
+
+## Stable set
+
+```{r stable-set, eval=FALSE}
+cat("Stable features selected:", length(fit$feature_list$feature_name), "\n")
+head(sort(fit$stability_freq, decreasing = TRUE), 20)
+```
+
+### Ground-truth validation
+
+Because the causal features are known, we evaluate SF's stable set directly
+against the nine true signals.  We report overall recall and precision, plus
+per-source recall to reveal whether SF recovers correlated-module features,
+independent-module features, or both.
+
+```{r gt-single, eval=FALSE}
+stable <- fit$feature_list$feature_name
+
+tp <- length(intersect(stable, T_all))
+cat(sprintf("Overall\n"))
+cat(sprintf("  M1 (corr large): %d / 3\n", length(intersect(stable, T_large))))
+cat(sprintf("  M2 (corr small): %d / 3\n", length(intersect(stable, T_small))))
+cat(sprintf("  M10 (indep)    : %d / 3\n", length(intersect(stable, T_ind))))
+```
+
+## Stability plot
+
+```{r plot-stability, eval=FALSE}
+#| fig-cap: "Shadow-win frequency per feature. Filled points exceed the stability threshold and enter the stable set."
+plot_stability(fit)
+```
+
+```{r show-stability, echo=FALSE}
+#| fig-cap: "Shadow-win frequency per feature. Filled points exceed the stability threshold and enter the stable set."
+if (!is.null(sim_cache)) print(sim_cache$p_stability)
+```
+
+
+---
+
+# Model Comparison: Three-Way Split + Cross-Validated Tuning
+
+## Design
+
+We compare **six SF variants** formed by two shadow modes × three DML options:
+
+| Variant | Shadow mode | DML |
+|---------|-------------|-----|
+| `split` | split | none |
+| `split_dml` | split | standard |
+| `split_mdml` | split | marginal |
+| `within` | within_module | none |
+| `within_dml` | within_module | standard |
+| `within_mdml` | within_module | marginal |
+
+We proceed with the following:
+
+0. **Modules from all data.** The `module_membership` from the section above is
+   reused throughout.
+1. **Vault a test set** (~20%, stratified) — held out once, scored once, at
+   the very end.
+2. **On the remaining ~80% (train):** 5-fold CV tunes the hyperparameter grid
+   *and* compares the six variants on both performance (mean validation-fold AUC)
+   **and** stability (Jaccard of the stable set across folds).
+3. **Select one variant** by a pre-specified rule (below), refit every variant
+   on the *full* train set, and evaluate on both the test vault and the
+   ground-truth causal features.
+
+Hyperparameters tuned jointly on the validation folds:
+
+| Parameter | Grid | Default |
+|-----------|------|---------|
+| `screen_control(drop_fraction)` | 0.25 (fixed) | 0.25 |
+| `select_control(drop_fraction)` | 0.05 (fixed) | 0.10 |
+| `select_control(pi_thr)` | 0.50, 0.60, 0.70 | 0.60 |
+| `min_ntree` (screen + select) | 500 (fixed) | 500 |
+| `n_boots` | 25 (fixed) | 50 |
+
+9 combinations per variant; selection criterion **mean validation-fold AUC**.
+All other parameters stay at package defaults.
+
+**Selection rule (fixed in advance).** Among the six variants we apply the
+**one-standard-error rule**: take the best mean CV AUC, then among all
+variants within one standard error of it, choose the **most stable** (highest
+mean pairwise Jaccard).
+
+## Setup
+
+```{r cv-load-pack}
+#| warning: false
+#| message: false
+
+library(pROC)
+library(caret)
+```
+
+```{r cv-setup, eval=FALSE}
+VARIANTS <- list(
+  split       = list(shadow_mode = "split",         use_dml_residual = FALSE, dml_scope = "indep"),
+  split_dml   = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "indep"),
+  split_mdml  = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "all_modules"),
+  within      = list(shadow_mode = "within_module", use_dml_residual = FALSE, dml_scope = "indep"),
+  within_dml  = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "indep"),
+  within_mdml = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "all_modules")
+)
+
+GRID <- expand.grid(
+  screen_drop = 0.25,
+  select_drop = 0.05,
+  pi_thr      = c(0.50, 0.60, 0.70),
+  stringsAsFactors = FALSE
+)
+
+set.seed(2026)
+trainval_idx <- as.integer(caret::createDataPartition(
+  factor(sim_y), p = 0.8, list = FALSE))
+test_idx     <- setdiff(seq_along(sim_y), trainval_idx)
+
+X_tv   <- sim_X[trainval_idx, ]; y_tv   <- sim_y[trainval_idx]
+X_test <- sim_X[test_idx, ];     y_test <- sim_y[test_idx]
+
+val_folds <- caret::createFolds(y_tv, k = 5, returnTrain = FALSE)
+
+cat(sprintf("Train: %d  |  Test vault: %d  |  Test positives: %d\n",
+            length(y_tv), length(y_test), sum(y_test == 1)))
+```
+
+## Fit-and-evaluate helper
+
+```{r cv-helper, eval=FALSE}
+fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
+
+  sc  <- screen_control(
+    drop_fraction = grid_row$screen_drop,
+    min_ntree     = 500L
+  )
+  sl  <- select_control(
+    drop_fraction    = grid_row$select_drop,
+    pi_thr           = grid_row$pi_thr,
+    n_boots          = 50L,
+    min_ntree        = 500L,
+    indep_modules    = "M10_indep",
+    shadow_mode      = variant$shadow_mode,
+    use_dml_residual = variant$use_dml_residual,
+    dml_scope        = variant$dml_scope
+  )
+
+  fit <- tryCatch(
+    sf(X_tr, y_tr,
+       module_membership = module_membership,
+       screen_params     = sc,
+       select_params     = sl,
+       backend           = "python",
+       seed              = 2026L,
+       verbose           = 0L),
+    error = function(e) NULL
+  )
+
+  stable <- if (!is.null(fit)) fit$feature_list$feature_name else character(0)
+  if (length(stable) == 0L)
+    return(list(auc = NA_real_, brier = NA_real_,
+                n_stable = 0L, stable = character(0)))
+
+  rf   <- ranger::ranger(
+    y ~ ., probability = TRUE, num.trees = 300L, seed = 1L,
+    data = data.frame(y = factor(y_tr), X_tr[, stable, drop = FALSE])
+  )
+  prob <- predict(rf,
+    data.frame(X_te[, stable, drop = FALSE]))$predictions[, 2]
+
+  list(
+    auc      = as.numeric(pROC::auc(y_te, prob, quiet = TRUE)),
+    brier    = mean((prob - y_te)^2),
+    n_stable = length(stable),
+    stable   = stable
+  )
+}
+```
+
+## Smoke test
+
+The full tuning sweep is 6 variants × 3 grid rows × 5 validation folds.
+Before launching, verify that `fit_eval()` runs end-to-end on two grid rows
+and a single train/test split.
+
+```{r cv-smoke-test, eval=FALSE}
+GRID_smoke <- GRID[1:2, ]
+print(GRID_smoke)
+
+set.seed(1)
+smoke_idx <- caret::createFolds(sim_y, k = 5, returnTrain = FALSE)[[1]]
+s_tr <- setdiff(seq_along(sim_y), smoke_idx)
+s_te <- smoke_idx
+
+smoke_results <- lapply(seq_len(nrow(GRID_smoke)), function(g) {
+  fit_eval(sim_X[s_tr, ], sim_y[s_tr],
+           sim_X[s_te, ], sim_y[s_te],
+           VARIANTS[["split"]], GRID_smoke[g, ])
+})
+
+data.frame(
+  grid_row = seq_len(nrow(GRID_smoke)),
+  auc      = vapply(smoke_results, `[[`, numeric(1), "auc"),
+  brier    = vapply(smoke_results, `[[`, numeric(1), "brier"),
+  n_stable = vapply(smoke_results, `[[`, numeric(1), "n_stable")
+)
+```
+
+If both rows return a finite `auc` and `n_stable > 0`, `fit_eval()` and
+`sf()` are wired correctly and it is safe to launch the full `tune` sweep below.
+
+## Cross-validated tuning and stability
+
+For each variant we sweep all 9 grid rows across the five validation folds,
+record each row's mean validation AUC, and lock the best-scoring row. At that
+locked setting we also keep the per-fold stable sets, whose mean pairwise
+Jaccard is the variant's **stability**. Nothing here touches the test vault.
+
+```{r cv-tune, eval=FALSE}
+jac_fn <- function(a, b)
+  length(intersect(a, b)) / max(length(union(a, b)), 1L)
+
+tune_one <- function(vname) {
+  variant <- VARIANTS[[vname]]
+
+  grid_res <- lapply(seq_len(nrow(GRID)), function(g) {
+    per_fold <- lapply(seq_along(val_folds), function(fi) {
+      vi   <- val_folds[[fi]]
+      i_te <- vi; i_tr <- setdiff(seq_along(y_tv), vi)
+      r <- fit_eval(X_tv[i_tr, ], y_tv[i_tr],
+                    X_tv[i_te, ], y_tv[i_te],
+                    variant, GRID[g, ])
+      message(sprintf("[%s] g%02d fold%d — auc=%.3f n=%d",
+                      vname, g, fi, r$auc, r$n_stable))
+      r
+    })
+    list(
+      auc  = mean(vapply(per_fold, `[[`, numeric(1), "auc"), na.rm = TRUE),
+      aucs = vapply(per_fold, `[[`, numeric(1), "auc"),
+      sets = lapply(per_fold, `[[`, "stable")
+    )
+  })
+
+  best_g <- which.max(vapply(grid_res, `[[`, numeric(1), "auc"))
+  best   <- grid_res[[best_g]]
+
+  jac <- mean(combn(length(best$sets), 2,
+                    function(i) jac_fn(best$sets[[i[1]]], best$sets[[i[2]]]),
+                    simplify = TRUE))
+
+  message(sprintf(">>> [%s] DONE — best g%02d cv_auc=%.3f jaccard=%.3f",
+                  vname, best_g, best$auc, jac))
+
+  list(
+    variant  = vname,
+    best_row = GRID[best_g, ],
+    cv_auc   = best$auc,
+    cv_aucs  = best$aucs,
+    jaccard  = jac,
+    sets     = best$sets
+  )
+}
+
+tune <- lapply(names(VARIANTS), tune_one)
+names(tune) <- names(VARIANTS)
+```
+
+## Results
+
+### Variant selection
+
+For each variant, hyperparameters were tuned in the CV sweep above by
+predictive performance (CV AUC).  Variant selection itself uses a different
+criterion: the **Nogueira size-corrected stability index** $\hat{\Phi}$
+(Nogueira, Sechidis & Brown, 2018), which corrects for the inflation that
+raw Jaccard similarity exhibits when comparing variants with different stable
+set sizes.  Among variants whose $\hat{\Phi}$ falls within one SE of the
+maximum, we select the most **parsimonious** (smallest mean stable set size
+$\bar{k}$).  Predictive performance is reported for reference but does not
+drive variant selection.
+
+```{r cv-select, eval=FALSE}
+# ── Nogueira Φ̂ helpers ───────────────────────────────────────────────────────
+.phi_hat <- function(sets, d) {
+  M     <- length(sets)
+  k_bar <- mean(sapply(sets, length))
+  if (k_bar == 0 || k_bar >= d) return(NA_real_)
+  pairs <- combn(M, 2, simplify = FALSE)
+  sym_d <- sapply(pairs, function(idx) {
+    a <- sets[[idx[1]]]; b <- sets[[idx[2]]]
+    length(a) + length(b) - 2L * length(intersect(a, b))
+  })
+  v_obs  <- mean(sym_d) / d
+  v_null <- 2 * k_bar * (d - k_bar) / d^2
+  1 - v_obs / v_null
+}
+
+.phi_se <- function(sets, d) {
+  M     <- length(sets)
+  k_bar <- mean(sapply(sets, length))
+  if (k_bar == 0 || k_bar >= d) return(NA_real_)
+  v_null <- 2 * k_bar * (d - k_bar) / d^2
+  pairs  <- combn(M, 2, simplify = FALSE)
+  v_ij   <- sapply(pairs, function(idx) {
+    a <- sets[[idx[1]]]; b <- sets[[idx[2]]]
+    (length(a) + length(b) - 2L * length(intersect(a, b))) / d
+  })
+  sd(v_ij) / (sqrt(length(v_ij)) * v_null)
+}
+
+d_total <- ncol(sim_X)
+
+summary_tbl <- do.call(rbind, lapply(tune, function(t) {
+  phi    <- .phi_hat(t$sets, d_total)
+  phi_se <- .phi_se(t$sets, d_total)
+  k_bar  <- mean(sapply(t$sets, length))
+  data.frame(
+    Variant        = t$variant,
+    CV_AUC         = round(t$cv_auc, 3),
+    CV_AUC_SE      = round(sd(t$cv_aucs, na.rm = TRUE) /
+                             sqrt(sum(!is.na(t$cv_aucs))), 3),
+    Jaccard        = round(t$jaccard, 3),
+    Phi            = round(phi, 3),
+    Phi_SE         = round(phi_se, 3),
+    k_bar          = round(k_bar, 1),
+    `Best pi_thr`  = t$best_row$pi_thr,
+    `Best sc_drop` = t$best_row$screen_drop,
+    `Best sl_drop` = t$best_row$select_drop,
+    check.names = FALSE, row.names = NULL
+  )
+}))
+
+# 1-SE rule on Φ̂; parsimony tiebreaker (smallest k̄)
+top     <- which.max(summary_tbl$Phi)
+cutoff  <- summary_tbl$Phi[top] - summary_tbl$Phi_SE[top]
+in_band <- summary_tbl[summary_tbl$Phi >= cutoff, ]
+best_v  <- in_band$Variant[which.min(in_band$k_bar)]
+
+knitr::kable(summary_tbl, align = "lccccccccc",
+             caption = "Per-variant CV performance and Nogueira stability (Φ̂). Variant selection uses 1-SE rule on Φ̂ with parsimony tiebreaker.")
+cat("Selected variant (1-SE on Φ̂, parsimony tiebreak):", best_v, "\n")
+```
+
+```{r show-summary, echo=FALSE}
+if (!is.null(sim_cache))
+  knitr::kable(sim_cache$summary_tbl, align = "lccccccccc",
+               caption = "Per-variant CV performance and Nogueira stability (Φ̂). Variant selection uses 1-SE rule on Φ̂ with parsimony tiebreaker.")
+```
+
+### Pairwise variant comparison
+
+The five validation folds give five paired AUC values per variant.  We test
+all 15 pairs with a paired Wilcoxon test and apply Benjamini-Hochberg
+correction.
+
+```{r pairwise, eval=FALSE}
+pairs <- combn(names(VARIANTS), 2, simplify = FALSE)
+
+pw <- do.call(rbind, lapply(pairs, function(p) {
+  a <- tune[[p[1]]]$cv_aucs
+  b <- tune[[p[2]]]$cv_aucs
+  wt <- wilcox.test(a, b, paired = TRUE, exact = FALSE)
+  data.frame(`Method A` = p[1], `Method B` = p[2],
+             `ΔAUC`     = round(mean(a - b, na.rm = TRUE), 3),
+             `p-value`  = round(wt$p.value, 4),
+             check.names = FALSE)
+}))
+pw$`p-adj (BH)` <- round(p.adjust(pw$`p-value`, method = "BH"), 4)
+knitr::kable(pw, caption = "Pairwise Wilcoxon tests on validation-fold AUC.")
+```
+
+```{r show-pairwise, echo=FALSE}
+if (!is.null(sim_cache))
+  knitr::kable(sim_cache$pw, caption = "Pairwise Wilcoxon tests on validation-fold AUC.")
+```
+
+### Nogueira stability
+
+```{r phi-plot, eval=FALSE}
+#| fig-cap: "Nogueira size-corrected stability index (Φ̂) per variant. Error bars show ±1 SE. Dashed line = 0 (random-selection null). Unlike raw Jaccard, Φ̂ accounts for the expected overlap at each variant's selection size, enabling unbiased cross-variant comparison."
+library(ggplot2)
+
+phi_df <- data.frame(
+  Variant = summary_tbl$Variant,
+  Phi     = summary_tbl$Phi,
+  Phi_SE  = summary_tbl$Phi_SE
+)
+
+ggplot(phi_df, aes(x = reorder(Variant, Phi), y = Phi)) +
+  geom_col(fill = "#1F77B4", width = 0.6) +
+  geom_errorbar(aes(ymin = Phi - Phi_SE, ymax = Phi + Phi_SE),
+                width = 0.25, colour = "grey30") +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+  coord_flip() +
+  labs(title    = "Nogueira size-corrected stability per variant",
+       subtitle = "Error bars = ±1 SE  |  Dashed line = random-selection null (Φ̂ = 0)",
+       x = NULL, y = expression(hat(Phi))) +
+  theme_bw()
+```
+
+```{r show-jaccard, echo=FALSE}
+#| fig-cap: "Nogueira size-corrected stability index (Φ̂) per variant with ±1 SE error bars."
+if (!is.null(sim_cache)) print(sim_cache$p_jaccard)
+```
+
+### Final models and held-out test evaluation
+
+We refit **every** variant on the full train+validation set at its locked
+hyperparameters, then score each on the vaulted test set — the single time
+the test data is touched.  Each `final_models[[v]]$fit` is a complete
+`shapleyforest` object available for further exploration.
+
+```{r final-models, eval=FALSE}
+final_models <- lapply(names(VARIANTS), function(vname) {
+  variant <- VARIANTS[[vname]]
+  row     <- tune[[vname]]$best_row
+
+  sc <- screen_control(
+    drop_fraction = row$screen_drop,
+    min_ntree     = 500L
+  )
+  sl <- select_control(
+    drop_fraction    = row$select_drop,
+    pi_thr           = row$pi_thr,
+    n_boots          = 25L,
+    min_ntree        = 1000L,
+    indep_modules    = "M10_indep",
+    shadow_mode      = variant$shadow_mode,
+    use_dml_residual = variant$use_dml_residual,
+    dml_scope        = variant$dml_scope
+  )
+
+  fit <- sf(X_tv, y_tv,
+            module_membership = module_membership,
+            screen_params     = sc,
+            select_params     = sl,
+            backend           = "python",
+            seed              = 2026L,
+            verbose           = 0L)
+
+  stable <- fit$feature_list$feature_name
+  rf <- ranger::ranger(
+    y ~ ., probability = TRUE, num.trees = 300L, seed = 1L,
+    data = data.frame(y = factor(y_tv), X_tv[, stable, drop = FALSE])
+  )
+  prob <- predict(rf, data.frame(X_test[, stable, drop = FALSE]))$predictions[, 2]
+
+  list(
+    fit        = fit,
+    test_auc   = as.numeric(pROC::auc(y_test, prob, quiet = TRUE)),
+    test_brier = mean((prob - y_test)^2),
+    n_stable   = length(stable)
+  )
+})
+names(final_models) <- names(VARIANTS)
+
+test_tbl <- data.frame(
+  Variant    = names(final_models),
+  Test_AUC   = round(vapply(final_models, `[[`, numeric(1), "test_auc"),   3),
+  Test_Brier = round(vapply(final_models, `[[`, numeric(1), "test_brier"), 3),
+  n_stable   = vapply(final_models, `[[`, integer(1), "n_stable"),
+  Selected   = ifelse(names(final_models) == best_v, "<<", ""),
+  row.names  = NULL
+)
+knitr::kable(test_tbl, align = "lcccc",
+             caption = "Held-out test-vault performance (selection made on validation only).")
+```
+
+```{r show-test, echo=FALSE}
+if (!is.null(sim_cache))
+  knitr::kable(sim_cache$test_tbl, align = "lcccc",
+               caption = "Held-out test-vault performance (selection made on validation only).")
+```
+
+### Ground-truth feature recovery
+
+The key evaluation unique to this simulation: for each variant's final model,
+how many of the nine causal features are recovered?  Recall and precision are
+computed against the known `T_all` set.  The correlated-module columns (M1, M2)
+and independent-module column (M10) are reported separately to reveal whether
+SF's split-pool and DML designs help at recovering each source.
+
+```{r gt-final, eval=FALSE}
+cat("Selected variant:", best_v, "\n\n")
+
+gt_tbl <- do.call(rbind, lapply(names(final_models), function(v) {
+  s  <- final_models[[v]]$fit$feature_list$feature_name
+  tp <- length(intersect(s, T_all))
+  data.frame(
+    Variant    = v,
+    Recall_M1  = length(intersect(s, T_large)),
+    Recall_M2  = length(intersect(s, T_small)),
+    Recall_M10 = length(intersect(s, T_ind)),
+    Total_TP   = tp,
+    Recall     = round(tp / length(T_all), 3),
+    Precision  = round(tp / max(length(s), 1L), 3),
+    n_stable   = length(s),
+    Selected   = ifelse(v == best_v, "<<", ""),
+    row.names  = NULL
+  )
+}))
+knitr::kable(gt_tbl, align = "lcccccccc",
+             caption = "Ground-truth feature recovery per variant (final models, full train set).")
+```
+
+```{r show-gt, echo=FALSE}
+if (!is.null(sim_cache))
+  knitr::kable(sim_cache$gt_tbl, align = "lcccccccc",
+               caption = "Ground-truth feature recovery per variant (final models, full train set).")
+```
+
+### Bootstrap selection frequency
+
+The final model is a single fit on `X_tv`.  To assess which features are
+*consistently* selected across different subsets of patients — not just in one
+run — we repeat the selected variant at its locked hyperparameters on
+`B = 100` random 80% subsamples of the training set (without replacement).
+The resulting selection frequency for each feature is the fraction of runs in
+which it entered the stable set.  Because we aggregate across 100 runs, each
+individual fit uses `n_boots = 15` (fewer bootstraps per run) without
+materially affecting the aggregate frequency estimate.
+
+```{r boot-stability, eval=FALSE}
+row_best     <- tune[[best_v]]$best_row
+variant_best <- VARIANTS[[best_v]]
+
+best_sc <- screen_control(
+  drop_fraction = row_best$screen_drop,
+  min_ntree     = 500L
+)
+best_sl <- select_control(
+  drop_fraction    = row_best$select_drop,
+  pi_thr           = row_best$pi_thr,
+  n_boots          = 15L,
+  min_ntree        = 500L,
+  indep_modules    = "M10_indep",
+  shadow_mode      = variant_best$shadow_mode,
+  use_dml_residual = variant_best$use_dml_residual,
+  dml_scope        = variant_best$dml_scope
+)
+
+B        <- 100L
+sub_size <- floor(0.8 * nrow(X_tv))
+
+boot_sets <- lapply(seq_len(B), function(b) {
+  idx   <- sample(nrow(X_tv), sub_size, replace = FALSE)
+  fit_b <- tryCatch(
+    sf(X_tv[idx, ], y_tv[idx],
+       module_membership = module_membership,
+       screen_params     = best_sc,
+       select_params     = best_sl,
+       backend           = "python",
+       seed              = b,
+       verbose           = 0L),
+    error = function(e) NULL
+  )
+  message(sprintf("boot %03d/%d — %s", b, B,
+                  if (is.null(fit_b)) "FAILED"
+                  else sprintf("n_stable=%d", nrow(fit_b$feature_list))))
+  if (is.null(fit_b)) character(0) else fit_b$feature_list$feature_name
+})
+
+# Selection frequency per feature
+freq_vec <- sort(
+  sapply(colnames(X_tv), function(f) mean(sapply(boot_sets, function(s) f %in% s))),
+  decreasing = TRUE
+)
+freq_df <- data.frame(
+  feature   = names(freq_vec),
+  frequency = as.numeric(freq_vec),
+  source    = ifelse(names(freq_vec) %in% T_large, "M1 (causal)",
+              ifelse(names(freq_vec) %in% T_small, "M2 (causal)",
+              ifelse(names(freq_vec) %in% T_ind,   "M10 (causal)",
+                                                    "Non-causal")))
+)
+freq_df <- freq_df[freq_df$frequency > 0, ]
+```
+
+```{r boot-freq-plot, eval=FALSE}
+#| fig-cap: "Bootstrap selection frequency — top 10 features per module. Causal features are coloured by module; co-members selected incidentally are grey."
+library(ggplot2)
+
+# Identify which module label corresponds to each causal group
+m1_mod  <- unique(module_membership[T_large])
+m2_mod  <- unique(module_membership[T_small])
+m10_mod <- unique(module_membership[T_ind])
+
+feat_mod <- module_membership[freq_df$feature]
+freq_df$panel <- ifelse(feat_mod == m1_mod,  "M1 module",
+                 ifelse(feat_mod == m2_mod,  "M2 module",
+                 ifelse(feat_mod == m10_mod, "M10 module", "Other modules")))
+freq_df$panel <- factor(freq_df$panel,
+  levels = c("M1 module", "M2 module", "M10 module", "Other modules"))
+
+top_per_module <- do.call(rbind, lapply(levels(freq_df$panel), function(p) {
+  sub <- freq_df[freq_df$panel == p, ]
+  head(sub[order(-sub$frequency), ], 10)
+}))
+top_per_module$feature <- reorder(top_per_module$feature, top_per_module$frequency)
+
+p_boot <- ggplot(top_per_module, aes(x = feature, y = frequency, fill = source)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = c("M1 (causal)"  = "#D62728",
+                                "M2 (causal)"  = "#FF7F0E",
+                                "M10 (causal)" = "#2CA02C",
+                                "Non-causal"   = "#AEC7E8")) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey40") +
+  facet_wrap(~ panel, scales = "free_y", ncol = 2) +
+  coord_flip() +
+  labs(title    = sprintf("Bootstrap selection frequency — %s", best_v),
+       subtitle = sprintf("B = %d runs, 80%% subsample (n = %d)", B, sub_size),
+       x = NULL, y = "Selection frequency", fill = "Feature type") +
+  theme_bw()
+print(p_boot)
+```
+
+```{r show-boot, echo=FALSE}
+#| fig-cap: "Bootstrap selection frequency for the top 30 features of the selected variant."
+if (!is.null(sim_cache)) print(sim_cache$p_boot)
+```
+
+```{r save-results, eval=FALSE}
+library(ggplot2)
+saveRDS(
+  list(
+    p_stability  = plot_stability(fit),
+    p_importance = plot_importance(fit, top_n = 20),
+    p_jaccard    = ggplot(phi_df, aes(x = reorder(Variant, Phi), y = Phi)) +
+                     geom_col(fill = "#1F77B4", width = 0.6) +
+                     geom_errorbar(aes(ymin = Phi - Phi_SE, ymax = Phi + Phi_SE),
+                                   width = 0.25, colour = "grey30") +
+                     geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+                     coord_flip() +
+                     labs(title    = "Nogueira size-corrected stability per variant",
+                          subtitle = "Error bars = ±1 SE  |  Dashed line = random-selection null (Φ̂ = 0)",
+                          x = NULL, y = expression(hat(Phi))) +
+                     theme_bw(),
+    summary_tbl  = summary_tbl,
+    pw           = pw,
+    test_tbl     = test_tbl,
+    gt_tbl       = gt_tbl,
+    p_boot       = p_boot,
+    freq_df      = freq_df
+  ),
+  "simulation_results.rds"
+)
+```
+
+---
+
+# Reporting Checklist
+
+| Item | Source |
+|------|--------|
+| Validation-fold AUC + stability per variant | `summary_tbl` |
+| Held-out test AUC / Brier per variant | `test_tbl` |
+| Selected variant (1-SE rule) | `best_v` |
+| Locked tuned hyperparameters | `summary_tbl` Best * columns |
+| Pairwise variant comparison | paired Wilcoxon + BH table |
+| Jaccard across validation folds | bar chart |
+| Ground-truth recall per variant | `gt_tbl` |
+| WGCNA module purity vs true modules | `module-recovery` chunk |
+| Fitted models for plotting | `final_models[[v]]$fit` |
+
+---
+
+# Session Info
+
+```{r session}
+sessionInfo()
+```
