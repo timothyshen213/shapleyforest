@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_modules}
 \alias{plot_modules}
-\alias{plot_modules.shapley_forest}
-\title{Plot Module Membership Distribution for a Shapley Forest Object}
+\alias{plot_modules.bonsai_forest}
+\title{Plot Module Membership Distribution for a Bonsai Forest Object}
 \usage{
 plot_modules(object, ...)
 
-\method{plot_modules}{shapley_forest}(
+\method{plot_modules}{bonsai_forest}(
   object,
   main = NULL,
   xlab = NULL,
@@ -17,7 +17,7 @@ plot_modules(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{bonsai_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -39,6 +39,6 @@ coloured by selection status.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_modules(shapley_forest)}: Module membership plot for a \code{shapley_forest} object.
+\item \code{plot_modules(bonsai_forest)}: Module membership plot for a \code{bonsai_forest} object.
 
 }}

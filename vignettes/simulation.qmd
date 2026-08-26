@@ -1,5 +1,5 @@
 ---
-title: "ShapleyForest on Simulated Data: Module-Based DGM"
+title: "BonsaiForest on Simulated Data: Module-Based DGM"
 author: "Timothy Shen"
 date: today
 format:
@@ -13,7 +13,7 @@ execute:
   warning: false
   message: false
 vignette: >
-  %\VignetteIndexEntry{Shapley Forest on Simulated Data}
+  %\VignetteIndexEntry{Bonsai Forest on Simulated Data}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
 
 # Introduction
 
-This vignette runs the full Shapley Forest (SF) pipeline on a **synthetic dataset
+This vignette runs the full Bonsai Forest (SF) pipeline on a **synthetic dataset
 with known ground truth**, allowing direct evaluation of whether SF selects the
 correct features rather than merely stable or predictive ones.
 
@@ -55,7 +55,7 @@ Sparse random edges between modules add realistic cross-module bleed.
 and three from the independent module (M10) are causal — nine signals total, all
 carrying the same coefficient magnitudes $\boldsymbol{\beta} = (12, 12, 10)$.
 The equal signal magnitude across correlated and independent sources directly
-tests whether SF's split-pool and DML designs help it recover features from
+tests whether SF's split-pool and cfRes designs help it recover features from
 both sources simultaneously.
 
 ```{r packages}
@@ -65,9 +65,9 @@ both sources simultaneously.
 if (!require("devtools", quietly = TRUE))
     install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyzshen/shapleyforest")
+devtools::install_github("timothyzshen/bonsaiforest")
 
-library(shapleyforest)
+library(bonsaiforest)
 library(WGCNA)
 library(igraph)
 library(MASS)
@@ -84,7 +84,7 @@ library(Matrix)
 # Causal features are sampled at random positions, independent of hub status.
 generate_X <- function(
     n,
-    n_modules   = 10L,   # total modules; last is always the independent pool
+    n_modules   = 10L,   # total modules; last is always the unassigned pool
     module_size = 100L,  # features per module (equal across all modules)
     lambda_min  = 0.5,   # eigengene loading for lowest-degree (peripheral) nodes
     lambda_max  = 0.9,   # eigengene loading for highest-degree (hub) nodes
@@ -123,26 +123,26 @@ generate_X <- function(
   X_corr <- scale(X_corr)
 
   # Independent module: pure iid N(0, 1)
-  X_indep      <- scale(matrix(rnorm(n * module_size), n, module_size))
-  causal_indep <- sort(sample(module_size, 3L))
+  X_unassigned      <- scale(matrix(rnorm(n * module_size), n, module_size))
+  causal_unassigned <- sort(sample(module_size, 3L))
 
   # Module-aware column names: M1_V1 … M10_V100
   cn_corr  <- unlist(lapply(seq_len(n_corr),
     function(k) paste0("M", k, "_V", seq_len(module_size))))
-  cn_indep <- paste0("M", n_modules, "_V", seq_len(module_size))
+  cn_unassigned <- paste0("M", n_modules, "_V", seq_len(module_size))
   colnames(X_corr)  <- cn_corr
-  colnames(X_indep) <- cn_indep
-  X <- as.data.frame(cbind(X_corr, X_indep))
+  colnames(X_unassigned) <- cn_unassigned
+  X <- as.data.frame(cbind(X_corr, X_unassigned))
 
   membership <- setNames(
     c(rep(paste0("M", seq_len(n_corr)), each = module_size),
-      rep(paste0("M", n_modules, "_indep"), module_size)),
+      rep(paste0("M", n_modules, "_unassigned"), module_size)),
     colnames(X)
   )
 
   T_large <- cn_corr[(0L * module_size) + causal_pos[[1L]]]
   T_small <- cn_corr[(1L * module_size) + causal_pos[[2L]]]
-  T_ind   <- cn_indep[causal_indep]
+  T_ind   <- cn_unassigned[causal_unassigned]
 
   list(
     X          = X,
@@ -235,9 +235,9 @@ cat("Grey features  :", sum(wgcna_colors == "grey"), "/", ncol(sim_X), "\n")
 
 ```{r wgcna-compare}
 # For each true correlated module, find best-matching WGCNA colour and
-# compute precision/recall. M10_indep features are expected to go grey.
+# compute precision/recall. M10_unassigned features are expected to go grey.
 recovery_tbl <- do.call(rbind, lapply(
-  setdiff(unique(true_modules), "M10_indep"),
+  setdiff(unique(true_modules), "M10_unassigned"),
   function(tm) {
     true_feat <- names(true_modules)[true_modules == tm]
     best_col  <- names(which.max(table(wgcna_colors[true_feat])))
@@ -256,17 +256,17 @@ recovery_tbl <- do.call(rbind, lapply(
   }
 ))
 knitr::kable(recovery_tbl, align = "lcccccc",
-             caption = "WGCNA module recovery vs. true modules (M10_indep expected grey).")
+             caption = "WGCNA module recovery vs. true modules (M10_unassigned expected grey).")
 ```
 
 ```{r module-membership-true}
 # Use the ground-truth module labels directly — the same approach as the
-# benchmark (pilot_v3.R passes dat$membership straight to sf()).
+# benchmark (pilot_v3.R passes dat$membership straight to bf()).
 # WGCNA is shown below for exploration only; with n=200 and a PA network it
 # cannot reliably recover the true blocks.
 module_membership <- true_modules
-# SF identifies the independent pool by name:
-module_membership[module_membership == "M10_indep"] <- "M10_indep"  # kept as-is
+# SF identifies the unassigned pool by name:
+module_membership[module_membership == "M10_unassigned"] <- "M10_unassigned"  # kept as-is
 ```
 
 ```{r sim-summary}
@@ -293,16 +293,16 @@ that handles only one pool will miss the other.
 We fit SF once on the full dataset to explore its output before the formal
 comparison.
 
-```{r sf-setup, eval=FALSE}
-sf_setup()
+```{r bf-setup, eval=FALSE}
+bf_setup()
 ```
 
 ```{r single-run, eval=FALSE}
 sc_single <- screen_control(min_ntree = 500L)
 sl_single <- select_control(min_ntree = 500L, n_boots = 50L,
-                             indep_modules = "M10_indep")
+                             unassigned_modules = "M10_unassigned")
 
-fit <- sf(
+fit <- bf(
   X                 = sim_X,
   y                 = sim_y,
   module_membership = module_membership,
@@ -335,7 +335,7 @@ tp <- length(intersect(stable, T_all))
 cat(sprintf("Overall\n"))
 cat(sprintf("  M1 (corr large): %d / 3\n", length(intersect(stable, T_large))))
 cat(sprintf("  M2 (corr small): %d / 3\n", length(intersect(stable, T_small))))
-cat(sprintf("  M10 (indep)    : %d / 3\n", length(intersect(stable, T_ind))))
+cat(sprintf("  M10 (unassigned)    : %d / 3\n", length(intersect(stable, T_ind))))
 ```
 
 ## Stability plot
@@ -357,16 +357,16 @@ if (!is.null(sim_cache)) print(sim_cache$p_stability)
 
 ## Design
 
-We compare **six SF variants** formed by two shadow modes × three DML options:
+We compare **six SF variants** formed by two shadow modes × three cfRes options:
 
-| Variant | Shadow mode | DML |
+| Variant | Shadow mode | cfRes |
 |---------|-------------|-----|
 | `split` | split | none |
 | `split_dml` | split | standard |
-| `split_mdml` | split | marginal |
+| `split_mcfres` | split | marginal |
 | `within` | within_module | none |
 | `within_dml` | within_module | standard |
-| `within_mdml` | within_module | marginal |
+| `within_mcfres` | within_module | marginal |
 
 We proceed with the following:
 
@@ -411,12 +411,12 @@ library(caret)
 
 ```{r cv-setup, eval=FALSE}
 VARIANTS <- list(
-  split       = list(shadow_mode = "split",         use_dml_residual = FALSE, dml_scope = "indep"),
-  split_dml   = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "indep"),
-  split_mdml  = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "all_modules"),
-  within      = list(shadow_mode = "within_module", use_dml_residual = FALSE, dml_scope = "indep"),
-  within_dml  = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "indep"),
-  within_mdml = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "all_modules")
+  split       = list(shadow_mode = "split",         use_cfres = FALSE, cfres_scope = "unassigned"),
+  split_dml   = list(shadow_mode = "split",         use_cfres = TRUE,  cfres_scope = "unassigned"),
+  split_mcfres  = list(shadow_mode = "split",         use_cfres = TRUE,  cfres_scope = "all_modules"),
+  within      = list(shadow_mode = "within_module", use_cfres = FALSE, cfres_scope = "unassigned"),
+  within_dml  = list(shadow_mode = "within_module", use_cfres = TRUE,  cfres_scope = "unassigned"),
+  within_mcfres = list(shadow_mode = "within_module", use_cfres = TRUE,  cfres_scope = "all_modules")
 )
 
 GRID <- expand.grid(
@@ -454,14 +454,14 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
     pi_thr           = grid_row$pi_thr,
     n_boots          = 50L,
     min_ntree        = 500L,
-    indep_modules    = "M10_indep",
+    unassigned_modules    = "M10_unassigned",
     shadow_mode      = variant$shadow_mode,
-    use_dml_residual = variant$use_dml_residual,
-    dml_scope        = variant$dml_scope
+    use_cfres = variant$use_cfres,
+    cfres_scope        = variant$cfres_scope
   )
 
   fit <- tryCatch(
-    sf(X_tr, y_tr,
+    bf(X_tr, y_tr,
        module_membership = module_membership,
        screen_params     = sc,
        select_params     = sl,
@@ -522,7 +522,7 @@ data.frame(
 ```
 
 If both rows return a finite `auc` and `n_stable > 0`, `fit_eval()` and
-`sf()` are wired correctly and it is safe to launch the full `tune` sweep below.
+`bf()` are wired correctly and it is safe to launch the full `tune` sweep below.
 
 ## Cross-validated tuning and stability
 
@@ -723,7 +723,7 @@ if (!is.null(sim_cache)) print(sim_cache$p_jaccard)
 We refit **every** variant on the full train+validation set at its locked
 hyperparameters, then score each on the vaulted test set — the single time
 the test data is touched.  Each `final_models[[v]]$fit` is a complete
-`shapleyforest` object available for further exploration.
+`bonsaiforest` object available for further exploration.
 
 ```{r final-models, eval=FALSE}
 final_models <- lapply(names(VARIANTS), function(vname) {
@@ -739,13 +739,13 @@ final_models <- lapply(names(VARIANTS), function(vname) {
     pi_thr           = row$pi_thr,
     n_boots          = 25L,
     min_ntree        = 1000L,
-    indep_modules    = "M10_indep",
+    unassigned_modules    = "M10_unassigned",
     shadow_mode      = variant$shadow_mode,
-    use_dml_residual = variant$use_dml_residual,
-    dml_scope        = variant$dml_scope
+    use_cfres = variant$use_cfres,
+    cfres_scope        = variant$cfres_scope
   )
 
-  fit <- sf(X_tv, y_tv,
+  fit <- bf(X_tv, y_tv,
             module_membership = module_membership,
             screen_params     = sc,
             select_params     = sl,
@@ -793,7 +793,7 @@ The key evaluation unique to this simulation: for each variant's final model,
 how many of the nine causal features are recovered?  Recall and precision are
 computed against the known `T_all` set.  The correlated-module columns (M1, M2)
 and independent-module column (M10) are reported separately to reveal whether
-SF's split-pool and DML designs help at recovering each source.
+SF's split-pool and cfRes designs help at recovering each source.
 
 ```{r gt-final, eval=FALSE}
 cat("Selected variant:", best_v, "\n\n")
@@ -848,10 +848,10 @@ best_sl <- select_control(
   pi_thr           = row_best$pi_thr,
   n_boots          = 15L,
   min_ntree        = 500L,
-  indep_modules    = "M10_indep",
+  unassigned_modules    = "M10_unassigned",
   shadow_mode      = variant_best$shadow_mode,
-  use_dml_residual = variant_best$use_dml_residual,
-  dml_scope        = variant_best$dml_scope
+  use_cfres = variant_best$use_cfres,
+  cfres_scope        = variant_best$cfres_scope
 )
 
 B        <- 100L
@@ -860,7 +860,7 @@ sub_size <- floor(0.8 * nrow(X_tv))
 boot_sets <- lapply(seq_len(B), function(b) {
   idx   <- sample(nrow(X_tv), sub_size, replace = FALSE)
   fit_b <- tryCatch(
-    sf(X_tv[idx, ], y_tv[idx],
+    bf(X_tv[idx, ], y_tv[idx],
        module_membership = module_membership,
        screen_params     = best_sc,
        select_params     = best_sl,

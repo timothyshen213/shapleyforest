@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_stability_elbow}
 \alias{plot_stability_elbow}
-\alias{plot_stability_elbow.shapley_forest}
-\title{Plot Shadow-Stability Selection Curves for a Shapley Forest Object}
+\alias{plot_stability_elbow.bonsai_forest}
+\title{Plot Shadow-Stability Selection Curves for a Bonsai Forest Object}
 \usage{
 plot_stability_elbow(object, ...)
 
-\method{plot_stability_elbow}{shapley_forest}(
+\method{plot_stability_elbow}{bonsai_forest}(
   object,
   col_selected = "#3e568a",
   col_unselected = "gray65",
@@ -20,7 +20,7 @@ plot_stability_elbow(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{bonsai_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -54,17 +54,17 @@ features were selected.
 }
 \details{
 For \code{shadow_mode = "split"} two panels are shown: one for the
-correlated pool (fixed \eqn{\pi} threshold) and one for the independent
+correlated pool (fixed \eqn{\pi} threshold) and one for the unassigned
 pool (elbow or fixed threshold).  For \code{shadow_mode = "within_module"}
 one panel is shown per module.
 
-The dashed red line marks the stability threshold applied. For independent
+The dashed red line marks the stability threshold applied. For unassigned
 pools with elbow detection the elbow rank is marked with a vertical dotted
 line.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_stability_elbow(shapley_forest)}: Stability elbow plot for a
-\code{shapley_forest} object.
+\item \code{plot_stability_elbow(bonsai_forest)}: Stability elbow plot for a
+\code{bonsai_forest} object.
 
 }}

@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_signed_importance}
 \alias{plot_signed_importance}
-\alias{plot_signed_importance.shapley_forest}
-\title{Plot Directional (Signed) Feature Importance for a Shapley Forest Object}
+\alias{plot_signed_importance.bonsai_forest}
+\title{Plot Directional (Signed) Feature Importance for a Bonsai Forest Object}
 \usage{
 plot_signed_importance(object, ...)
 
-\method{plot_signed_importance}{shapley_forest}(
+\method{plot_signed_importance}{bonsai_forest}(
   object,
   top_n = 20L,
   labels = NULL,
@@ -19,7 +19,7 @@ plot_signed_importance(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{bonsai_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -54,7 +54,7 @@ suppress it. Features whose direction is ambiguous (non-monotone:
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_signed_importance(shapley_forest)}: Signed-importance plot for a
-\code{shapley_forest} object.
+\item \code{plot_signed_importance(bonsai_forest)}: Signed-importance plot for a
+\code{bonsai_forest} object.
 
 }}

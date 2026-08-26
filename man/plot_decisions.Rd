@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_decisions}
 \alias{plot_decisions}
-\alias{plot_decisions.shapley_forest}
-\title{Plot Decision Plot for a Shapley Forest Object}
+\alias{plot_decisions.bonsai_forest}
+\title{Plot Decision Plot for a Bonsai Forest Object}
 \usage{
 plot_decisions(object, ...)
 
-\method{plot_decisions}{shapley_forest}(
+\method{plot_decisions}{bonsai_forest}(
   object,
   highlight = NULL,
   just_shap = FALSE,
@@ -18,7 +18,7 @@ plot_decisions(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object. If \code{just_shap = TRUE},
+\item{object}{A \code{bonsai_forest} object. If \code{just_shap = TRUE},
 pass a data frame of SHAP values instead.}
 
 \item{...}{Ignored.}
@@ -45,6 +45,6 @@ package.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_decisions(shapley_forest)}: Decision plot for a \code{shapley_forest} object.
+\item \code{plot_decisions(bonsai_forest)}: Decision plot for a \code{bonsai_forest} object.
 
 }}

@@ -2,15 +2,15 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_potential_interactions}
 \alias{plot_potential_interactions}
-\alias{plot_potential_interactions.shapley_forest}
-\title{Plot Potential Interaction Matrix for a Shapley Forest Object}
+\alias{plot_potential_interactions.bonsai_forest}
+\title{Plot Potential Interaction Matrix for a Bonsai Forest Object}
 \usage{
 plot_potential_interactions(object, ...)
 
-\method{plot_potential_interactions}{shapley_forest}(object, ...)
+\method{plot_potential_interactions}{bonsai_forest}(object, ...)
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{bonsai_forest} object.}
 
 \item{...}{Ignored.}
 }
@@ -23,7 +23,7 @@ for all stable features.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_potential_interactions(shapley_forest)}: Interaction heatmap for a
-\code{shapley_forest} object (uses exact TreeSHAP interaction values).
+\item \code{plot_potential_interactions(bonsai_forest)}: Interaction heatmap for a
+\code{bonsai_forest} object (uses exact TreeSHAP interaction values).
 
 }}

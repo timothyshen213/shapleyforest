@@ -1,8 +1,8 @@
-#' Shapley Forest Object
+#' Bonsai Forest Object
 #'
-#' Constructor for the \code{shapley_forest} return type. Users do not call
-#' this directly; it is called internally by \code{\link{sf}} and
-#' \code{\link{wsf}}.
+#' Constructor for the \code{bonsai_forest} return type. Users do not call
+#' this directly; it is called internally by \code{\link{bf}} and
+#' \code{\link{wbf}}.
 #'
 #' @param final_rf        Final \code{ranger} object fitted on the stable
 #'                        feature set.
@@ -30,9 +30,9 @@
 #'                        \code{selected}, \code{threshold}, \code{elbow_rank}.
 #'                        \code{NULL} if unavailable.
 #'
-#' @return An object of class \code{shapley_forest}.
+#' @return An object of class \code{bonsai_forest}.
 #' @keywords internal
-shapley_forest <- function(final_rf, final_X, module_membership,
+bonsai_forest <- function(final_rf, final_X, module_membership,
                             WGCNA_object    = NULL,
                             survivor_list,
                             selection_list,
@@ -56,23 +56,23 @@ shapley_forest <- function(final_rf, final_X, module_membership,
     stability_freq   = stability_freq,
     stability_data   = stability_data
   )
-  class(out) <- "shapley_forest"
+  class(out) <- "bonsai_forest"
   out
 }
 
 
-#' Print a Shapley Forest Object
+#' Print a Bonsai Forest Object
 #'
 #' Prints the stable feature set with mean |SHAP| importance scores and
 #' shadow-stability frequencies.
 #'
-#' @param x   A \code{shapley_forest} object.
+#' @param x   A \code{bonsai_forest} object.
 #' @param ... Ignored.
 #'
 #' @return Invisibly returns \code{x}.
 #' @export
-print.shapley_forest <- function(x, ...) {
-  cat("--- Shapley Forest ---\n")
+print.bonsai_forest <- function(x, ...) {
+  cat("--- Bonsai Forest ---\n")
   cat(sprintf("Stable features selected: %d\n\n", nrow(x$final_SHAP)))
   print(x$final_SHAP)
 
@@ -83,18 +83,18 @@ print.shapley_forest <- function(x, ...) {
 }
 
 
-#' Predict from a Shapley Forest Object
+#' Predict from a Bonsai Forest Object
 #'
 #' Generates predictions from the final random forest fitted on the stable
 #' feature set.
 #'
-#' @param object   A \code{shapley_forest} object.
+#' @param object   A \code{bonsai_forest} object.
 #' @param new_data A matrix or data frame of new observations. Column names
 #'                 must match the training features.
 #' @param ...      Additional arguments passed to \code{ranger:::predict}.
 #'
 #' @return A \code{ranger} prediction object.
 #' @export
-predict.shapley_forest <- function(object, new_data, ...) {
+predict.bonsai_forest <- function(object, new_data, ...) {
   predict(object$final_rf, data = new_data, ...)
 }

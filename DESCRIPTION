@@ -1,12 +1,12 @@
-Package: shapleyforest
-Title: Shapley Forest
+Package: bonsaiforest
+Title: Bonsai Forest
 Version: 1.0.0
 Authors@R:
     person("Timothy", "Shen", , "tzshen@g.ucla.edu", role = c("aut", "cre"))
 Description: An interpretable network-aware random-forest feature selection framework for
     high-dimensional and correlated data. Combines recursive feature elimination,
     WGCNA, and shadow-stability selection through TreeSHAP values. A Python environment with 	scikit-learn, shap, and numpy is
-    required; configure it with sf_setup().
+    required; configure it with bf_setup().
 Imports:
     reticulate (>= 1.35),
     ranger (>= 0.16.0),

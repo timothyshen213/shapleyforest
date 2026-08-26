@@ -1,7 +1,7 @@
 """
-sf_python_backend_v18.py
+bf_python_backend_v18.py
 ------------------------
-ShapleyForest v18 — stable union + single-shot joint TreeSHAP.
+BonsaiForest v18 — stable union + single-shot joint TreeSHAP.
 
 Replaces pass-2 SHAP RFE (iterative elimination) with a single RF fit on
 the entire stable union, then TreeSHAP on all features simultaneously.
@@ -36,9 +36,9 @@ Output
 
   Empty stable union -> empty lists (not padded to any K).
 
-DML layer (optional)
+cfRes layer (optional)
 ---------------------
-  use_dml_residual=True  cross-fitted corr residualization (as in v17).
+  use_cfres=True  cross-fitted corr residualization (as in v17).
   Applied BEFORE shadow stability to boost ind feature frequencies into U.
   Final single-shot RF always uses original y for interpretable SHAPs.
 
@@ -61,7 +61,7 @@ Shadow-stability algorithm (unchanged from v14/v17)
 
   Thresholding:
     corr pool: stable = { j : freq(j) >= pi_thr }
-    ind  pool: elbow of sorted freq curve (or pi_thr_indep if given)
+    ind  pool: elbow of sorted freq curve (or pi_thr_unassigned if given)
 
 Screen RFE and run_final_rf_shap unchanged from v12/v14.
 """
@@ -80,7 +80,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 def _cross_fit_residuals(X_corr, y, k_folds=5, ntree=300,
                           mtry_factor=1.0, nodesize=5, seed=42, n_jobs=1):
     """
-    Phase 2a — Robinson / DML residualization.
+    Phase 2a — Robinson / cfRes residualization.
 
     Fits RF on corr-pool survivors via K-fold cross-fitting: each obs's
     predicted value ĝ(X_corr_i) comes from a model trained on the other
@@ -132,7 +132,7 @@ def _cross_fit_residuals(X_corr, y, k_folds=5, ntree=300,
 
     y_resid = y.astype(np.float64) - y_hat
     r2_corr = float(1.0 - np.var(y_resid) / (np.var(y) + 1e-12))
-    # DML residualization diagnostics suppressed in release build
+    # cfRes residualization diagnostics suppressed in release build
     return y_resid
 
 def _build_rf(n_estimators, max_features, min_samples_leaf,
@@ -485,7 +485,7 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
     n_valid = 0
 
     # Per-bootstrap deterministic seeds (order-independent). Mirrors the
-    # shapleyforest_py package so the two implementations stay matched.
+    # bonsaiforest_py package so the two implementations stay matched.
     boot_seeds = np.random.SeedSequence(int(seed)).generate_state(int(n_boots))
     _prev_freqs = [None]   # early-stopping state
 
@@ -563,7 +563,7 @@ def _apply_stable_threshold(names_sorted, freqs_sorted, pi_thr,
     """
     Apply stable-set threshold to shadow-stability outputs.
 
-    use_elbow=True  (independent pools):
+    use_elbow=True  (unassigned pools):
         Use perpendicular-distance elbow detection on the frequency curve.
         Keeps all features with freq >= freqs_sorted[elbow_idx].
         Falls back to top-1 if the curve is flat.
@@ -702,21 +702,21 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
                    # ── shadow / threshold ────────────────────────────────────
                    shadow_mode="split",        # "split" or "within_module"
                    shadow_percentile=95,
-                   pi_thr_indep=None,          # None = elbow; float = fixed
+                   pi_thr_unassigned=None,          # None = elbow; float = fixed
                    threshold_mode="pi_thr",    # "pi_thr" or "elbow"
                    # ── mtry ──────────────────────────────────────────────────
                    mtry_rule="auto", mtry_on_real=False,
                    # ── adaptive bootstrap stopping ───────────────────────────
                    early_stop_boots=False, early_stop_tol=0.01,
                    early_stop_check_every=10,
-                   # ── DML ───────────────────────────────────────────────────
-                   use_dml_residual=False,
-                   dml_n_folds=5,
-                   dml_ntree=300,
-                   dml_scope="indep",
+                   # ── cfRes ───────────────────────────────────────────────────
+                   use_cfres=False,
+                   cfres_n_folds=5,
+                   cfres_ntree=300,
+                   cfres_scope="unassigned",
                    # ── group info ────────────────────────────────────────────
                    module_assignments_surv=None,
-                   indep_modules=None,
+                   unassigned_modules=None,
                    verbose=True):
     """
     v18 selection: shadow stability -> stable union -> single-shot joint TreeSHAP.
@@ -725,7 +725,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
 
     shadow_mode = "split"
         Corr pool -> shadow stability -> stable_corr  (pi_thr threshold)
-        Ind  pool -> shadow stability -> stable_ind   (elbow or pi_thr_indep)
+        Ind  pool -> shadow stability -> stable_ind   (elbow or pi_thr_unassigned)
         stable_union = stable_corr | stable_ind
         -> single RF on X[stable_union] + TreeSHAP -> return all |stable_union| features
 
@@ -734,7 +734,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
         stable_union = union of all module stable sets
         -> single RF + TreeSHAP -> return all features
 
-    use_dml_residual=True (optional):
+    use_cfres=True (optional):
         Before ind-pool shadow stability, compute y_resid = y - RF_cv(X_corr).
         Ind shadow stability runs on y_resid (boosted SNR for ind features).
         Final single-shot RF uses original y.
@@ -770,34 +770,34 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     threshold_mode      = str(threshold_mode).lower()
     if threshold_mode not in ("pi_thr", "elbow"):
         raise ValueError(f"threshold_mode must be 'pi_thr' or 'elbow', got '{threshold_mode}'")
-    use_dml_residual    = bool(use_dml_residual)
-    dml_n_folds         = max(2, int(dml_n_folds))
-    dml_ntree           = max(10, int(dml_ntree))
-    dml_scope           = str(dml_scope).lower()
-    if dml_scope not in ("indep", "all_modules"):
-        raise ValueError(f"dml_scope must be 'indep' or 'all_modules', got '{dml_scope}'")
-    # pi_thr_indep: None -> elbow; otherwise coerce to float
-    if pi_thr_indep is not None:
+    use_cfres    = bool(use_cfres)
+    cfres_n_folds         = max(2, int(cfres_n_folds))
+    cfres_ntree           = max(10, int(cfres_ntree))
+    cfres_scope           = str(cfres_scope).lower()
+    if cfres_scope not in ("unassigned", "all_modules"):
+        raise ValueError(f"cfres_scope must be 'unassigned' or 'all_modules', got '{cfres_scope}'")
+    # pi_thr_unassigned: None -> elbow; otherwise coerce to float
+    if pi_thr_unassigned is not None:
         try:
-            pi_thr_indep = float(pi_thr_indep)
+            pi_thr_unassigned = float(pi_thr_unassigned)
         except (TypeError, ValueError):
-            pi_thr_indep = None
+            pi_thr_unassigned = None
 
-    indep_set = set(str(m) for m in indep_modules) if indep_modules else set()
+    unassigned_set = set(str(m) for m in unassigned_modules) if unassigned_modules else set()
     if module_assignments_surv is not None:
         raw_mods    = [str(m) for m in module_assignments_surv]
         name_to_mod = dict(zip(orig_feature_names, raw_mods))
     else:
         name_to_mod = {}
 
-    indep_strategy = ("elbow" if pi_thr_indep is None
-                      else f"fixed pi={pi_thr_indep:.2f}")
+    unassigned_strategy = ("elbow" if pi_thr_unassigned is None
+                      else f"fixed pi={pi_thr_unassigned:.2f}")
     if verbose: print(f"shadow_mode={shadow_mode}  shadow_percentile={shadow_percentile}"
-          f"  pi_thr={pi_thr}  pi_thr_indep={indep_strategy}  n_boots={n_boots}")
-    if verbose: print(f"indep_modules={indep_modules}  "
-          f"use_dml_residual={use_dml_residual}"
-          + (f"  dml_scope={dml_scope}  dml_n_folds={dml_n_folds}  dml_ntree={dml_ntree}"
-             if use_dml_residual else "")
+          f"  pi_thr={pi_thr}  pi_thr_unassigned={unassigned_strategy}  n_boots={n_boots}")
+    if verbose: print(f"unassigned_modules={unassigned_modules}  "
+          f"use_cfres={use_cfres}"
+          + (f"  cfres_scope={cfres_scope}  cfres_n_folds={cfres_n_folds}  cfres_ntree={cfres_ntree}"
+             if use_cfres else "")
           )
 
     if classification:
@@ -808,36 +808,36 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     # (Phase-2 blockwise pre-reduction removed by design - the full survivor
     #  pool goes straight into shadow stability.)
 
-    # ── Phase 2a: DML corr residualization  (v17 new) ────────────────────────
+    # ── Phase 2a: cfRes corr residualization  (v17 new) ────────────────────────
     # Compute y_resid ONCE, before the mode branches, using all corr survivors.
     # This requires knowing corr_idx — find it now regardless of shadow_mode.
     # (The per-mode branches will re-derive it; that's fine, it's cheap.)
-    if use_dml_residual and indep_set and name_to_mod:
+    if use_cfres and unassigned_set and name_to_mod:
         all_corr_idx = [i for i, f in enumerate(feature_names_surv)
-                        if name_to_mod.get(f, "") not in indep_set]
+                        if name_to_mod.get(f, "") not in unassigned_set]
         if len(all_corr_idx) == 0:
-            if verbose: print("DML: no corr survivors - skipping residualization")
+            if verbose: print("cfRes: no corr survivors - skipping residualization")
             y_for_ind = y
         else:
             X_corr_surv = X_surv_mat[:, all_corr_idx]
-            if verbose: print(f"DML: computing cross-fitted residuals "
-                  f"({dml_n_folds} folds, ntree={dml_ntree}, "
+            if verbose: print(f"cfRes: computing cross-fitted residuals "
+                  f"({cfres_n_folds} folds, ntree={cfres_ntree}, "
                   f"p_corr={len(all_corr_idx)})")
             y_for_ind = _cross_fit_residuals(
                 X_corr   = X_corr_surv,
                 y        = y,
-                k_folds  = dml_n_folds,
-                ntree    = dml_ntree,
+                k_folds  = cfres_n_folds,
+                ntree    = cfres_ntree,
                 mtry_factor = float(mtry_factor),
                 nodesize    = int(nodesize),
                 seed        = int(seed) + 88317,
                 n_jobs      = int(n_jobs),
             )
     else:
-        y_for_ind = y   # no DML: ind pool uses original y (v14 behaviour)
+        y_for_ind = y   # no cfRes: ind pool uses original y (v14 behaviour)
 
     # ── helper: run shadow stability + threshold for one column subset ───────
-    def _shadow_on_cols(col_idx, label, seed_offset=0, is_indep=False, y_override=None):
+    def _shadow_on_cols(col_idx, label, seed_offset=0, is_unassigned=False, y_override=None):
         """
         Returns (names_sort, freq_map, stable, threshold, freqs_sort, elbow_rank)
           names_sort  : features sorted by freq desc
@@ -851,15 +851,15 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
             return [], {}, [], 0.0, [], None
         X_sub   = X_surv_mat[:, col_idx]
         names_s = [feature_names_surv[i] for i in col_idx]
-        # Priority: explicit y_override > y_for_ind (if is_indep) > y
+        # Priority: explicit y_override > y_for_ind (if is_unassigned) > y
         if y_override is not None:
             y_arr = y_override
-        elif is_indep:
+        elif is_unassigned:
             y_arr = y_for_ind
         else:
             y_arr = y
-        _using_resid = (y_override is not None) or (is_indep and use_dml_residual)
-        # A DML-residualized target is CONTINUOUS even for a classification task,
+        _using_resid = (y_override is not None) or (is_unassigned and use_cfres)
+        # A cfRes-residualized target is CONTINUOUS even for a classification task,
         # so this pool's shadow-stability RF must be fit as a REGRESSOR (else the
         # residual is cast to int -> degenerate).
         pool_classification = classification and not _using_resid
@@ -886,14 +886,14 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
             early_stop_check_every = early_stop_check_every,
         )
         freq_map = dict(zip(names_sort, freqs_sort))
-        # ── threshold: corr -> pi_thr; ind -> elbow (or pi_thr_indep) ─────────
+        # ── threshold: corr -> pi_thr; ind -> elbow (or pi_thr_unassigned) ─────────
         if threshold_mode == "elbow":
             stable, threshold, elbow_rank = _apply_stable_threshold(
                 names_sort, freqs_sort, pi_thr, use_elbow=True, label=label
             )
-        elif is_indep:
-            use_elbow = (pi_thr_indep is None)
-            thr       = pi_thr_indep if not use_elbow else pi_thr  # pi_thr unused when elbow
+        elif is_unassigned:
+            use_elbow = (pi_thr_unassigned is None)
+            thr       = pi_thr_unassigned if not use_elbow else pi_thr  # pi_thr unused when elbow
             stable, threshold, elbow_rank = _apply_stable_threshold(
                 names_sort, freqs_sort, thr,
                 use_elbow=use_elbow, label=label
@@ -909,43 +909,43 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     # MODE A: "split" — corr pool vs ind pool
     # ─────────────────────────────────────────────────────────────────────────
     if shadow_mode == "split":
-        if indep_set and name_to_mod:
+        if unassigned_set and name_to_mod:
             corr_idx  = [i for i, f in enumerate(feature_names_surv)
-                         if name_to_mod.get(f, "") not in indep_set]
-            indep_idx = [i for i, f in enumerate(feature_names_surv)
-                         if name_to_mod.get(f, "") in indep_set]
+                         if name_to_mod.get(f, "") not in unassigned_set]
+            unassigned_idx = [i for i, f in enumerate(feature_names_surv)
+                         if name_to_mod.get(f, "") in unassigned_set]
         else:
             # no group info — treat everything as corr, skip ind
             corr_idx  = list(range(len(feature_names_surv)))
-            indep_idx = []
+            unassigned_idx = []
 
-        # ── split+mDML: residualize corr pool using ind features ─────────────
+        # ── split+mcfRes: residualize corr pool using ind features ─────────────
         y_for_corr = y  # default (no override)
-        if use_dml_residual and dml_scope == "all_modules" and len(indep_idx) > 0:
-            X_ind_surv = X_surv_mat[:, indep_idx]
-            if verbose: print(f"split+mDML: residualizing y for corr pool using "
-                  f"{len(indep_idx)} ind features "
-                  f"({dml_n_folds} folds, ntree={dml_ntree})")
+        if use_cfres and cfres_scope == "all_modules" and len(unassigned_idx) > 0:
+            X_ind_surv = X_surv_mat[:, unassigned_idx]
+            if verbose: print(f"split+mcfRes: residualizing y for corr pool using "
+                  f"{len(unassigned_idx)} ind features "
+                  f"({cfres_n_folds} folds, ntree={cfres_ntree})")
             y_for_corr = _cross_fit_residuals(
                 X_corr      = X_ind_surv,
                 y           = y,
-                k_folds     = dml_n_folds,
-                ntree       = dml_ntree,
+                k_folds     = cfres_n_folds,
+                ntree       = cfres_ntree,
                 mtry_factor = float(mtry_factor),
                 nodesize    = int(nodesize),
                 seed        = int(seed) + 88317 + 2,
                 n_jobs      = int(n_jobs),
             )
 
-        corr_override = y_for_corr if (use_dml_residual and dml_scope == "all_modules") else None
+        corr_override = y_for_corr if (use_cfres and cfres_scope == "all_modules") else None
         names_corr,  freq_corr,  stable_corr,  thr_corr,  freqs_corr,  elbow_corr  = \
-            _shadow_on_cols(corr_idx,  "corr",  seed_offset=0, is_indep=False,
+            _shadow_on_cols(corr_idx,  "corr",  seed_offset=0, is_unassigned=False,
                             y_override=corr_override)
-        names_indep, freq_indep, stable_indep, thr_indep, freqs_indep, elbow_indep = \
-            _shadow_on_cols(indep_idx, "indep", seed_offset=1, is_indep=True)
+        names_unassigned, freq_unassigned, stable_unassigned, thr_unassigned, freqs_unassigned, elbow_unassigned = \
+            _shadow_on_cols(unassigned_idx, "unassigned", seed_offset=1, is_unassigned=True)
 
-        freq_map_all = {**freq_corr, **freq_indep}
-        stable_union = list(set(stable_corr) | set(stable_indep))
+        freq_map_all = {**freq_corr, **freq_unassigned}
+        stable_union = list(set(stable_corr) | set(stable_unassigned))
 
         # ── pool stability data for plotting ─────────────────────────────────
         pool_stability = []
@@ -959,15 +959,15 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
                 'selected'    : [f in stable_set_c for f in names_corr],
                 'elbow_rank'  : elbow_corr,          # None for corr (fixed thr)
             })
-        if names_indep:
-            stable_set_i = set(stable_indep)
+        if names_unassigned:
+            stable_set_i = set(stable_unassigned)
             pool_stability.append({
-                'pool'        : 'indep',
-                'feature_names': names_indep,
-                'freqs'       : freqs_indep,
-                'threshold'   : float(thr_indep),
-                'selected'    : [f in stable_set_i for f in names_indep],
-                'elbow_rank'  : elbow_indep,         # int if elbow was used
+                'pool'        : 'unassigned',
+                'feature_names': names_unassigned,
+                'freqs'       : freqs_unassigned,
+                'threshold'   : float(thr_unassigned),
+                'selected'    : [f in stable_set_i for f in names_unassigned],
+                'elbow_rank'  : elbow_unassigned,         # int if elbow was used
             })
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -980,7 +980,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
             if verbose: print("within_module: no module assignments found, running as single pool")
             names_all, freq_map_all, stable_union, thr_all, freqs_all, elbow_all = \
                 _shadow_on_cols(list(range(len(feature_names_surv))), "all",
-                                seed_offset=0, is_indep=False)
+                                seed_offset=0, is_unassigned=False)
             if names_all:
                 stable_set_all = set(stable_union)
                 pool_stability.append({
@@ -1002,27 +1002,27 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
             stable_union = []
 
             for m_offset, (mod_label, col_idx) in enumerate(mod_to_idx.items()):
-                is_indep_mod = (mod_label in indep_set)
+                is_unassigned_mod = (mod_label in unassigned_set)
 
-                # ── per-module DML: residualize y by all OTHER modules ────────
+                # ── per-module cfRes: residualize y by all OTHER modules ────────
                 y_mod = None   # None → _shadow_on_cols uses default logic
-                if use_dml_residual and dml_scope == "all_modules":
+                if use_cfres and cfres_scope == "all_modules":
                     other_idx = [i for i in range(len(feature_names_surv))
                                  if i not in col_idx]
                     if len(other_idx) == 0:
-                        if verbose: print(f"mdml: no other-module features for "
+                        if verbose: print(f"mcfres: no other-module features for "
                               f"module:{mod_label} — using original y")
                         y_mod = y
                     else:
                         X_other = X_surv_mat[:, other_idx]
-                        if verbose: print(f"mdml: residualizing y for module:{mod_label} "
+                        if verbose: print(f"mcfres: residualizing y for module:{mod_label} "
                               f"using {len(other_idx)} other-module features "
-                              f"({dml_n_folds} folds, ntree={dml_ntree})")
+                              f"({cfres_n_folds} folds, ntree={cfres_ntree})")
                         y_mod = _cross_fit_residuals(
                             X_corr      = X_other,
                             y           = y,
-                            k_folds     = dml_n_folds,
-                            ntree       = dml_ntree,
+                            k_folds     = cfres_n_folds,
+                            ntree       = cfres_ntree,
                             mtry_factor = float(mtry_factor),
                             nodesize    = int(nodesize),
                             seed        = int(seed) + 88317 + m_offset * 997,
@@ -1031,7 +1031,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
 
                 names_mod, freq_mod, stable_mod, thr_mod, freqs_mod, elbow_mod = \
                     _shadow_on_cols(col_idx, f"module:{mod_label}",
-                                    seed_offset=m_offset, is_indep=is_indep_mod,
+                                    seed_offset=m_offset, is_unassigned=is_unassigned_mod,
                                     y_override=y_mod)
                 freq_map_all.update(freq_mod)
                 stable_union.extend(stable_mod)
@@ -1152,7 +1152,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
 
     if verbose: print(f"Single-shot SHAP complete: {n_stable} features returned"
           + (f"  top3={final_features[:3]}" if n_stable >= 3 else "")
-          + (" [DML residual used for stability]" if use_dml_residual else ""))
+          + (" [cfRes residual used for stability]" if use_cfres else ""))
 
     return {
         'final_features'       : list(final_features),

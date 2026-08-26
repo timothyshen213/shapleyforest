@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_elbow}
 \alias{plot_elbow}
-\alias{plot_elbow.shapley_forest}
-\title{Plot Elbow Plot of Absolute SHAP Values for a Shapley Forest Object}
+\alias{plot_elbow.bonsai_forest}
+\title{Plot Elbow Plot of Absolute SHAP Values for a Bonsai Forest Object}
 \usage{
 plot_elbow(object, ...)
 
-\method{plot_elbow}{shapley_forest}(
+\method{plot_elbow}{bonsai_forest}(
   object,
   main = NULL,
   xlab = NULL,
@@ -19,7 +19,7 @@ plot_elbow(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{bonsai_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -44,6 +44,6 @@ Ranks stable features by mean |SHAP| importance and displays an elbow
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_elbow(shapley_forest)}: Elbow plot for a \code{shapley_forest} object.
+\item \code{plot_elbow(bonsai_forest)}: Elbow plot for a \code{bonsai_forest} object.
 
 }}

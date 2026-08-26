@@ -1,8 +1,8 @@
-# Pure-R backend for shapleyforest — no Python / reticulate required.
+# Pure-R backend for bonsaiforest — no Python / reticulate required.
 #
 # Screening RFE and shadow-stability selection both use ranger + permutation
 # importance.  For the final importance step the user chooses one of three
-# methods via the `r_shap` argument passed down from sf():
+# methods via the `r_shap` argument passed down from bf():
 #
 #   "permutation" — ranger permutation VIM (scalar per feature, no extra pkg)
 #   "fastshap"    — approximate Shapley values via the fastshap package
@@ -14,9 +14,9 @@
 # Internal helpers — not exported.
 
 
-# ── Top-level orchestrator called by sf() ────────────────────────────────────
+# ── Top-level orchestrator called by bf() ────────────────────────────────────
 
-.sf_R_backend <- function(X, y,
+.bf_R_backend <- function(X, y,
                            module_membership,
                            module_membership_screen,
                            module_list_screen,
@@ -41,7 +41,7 @@
   if (verbose >= 1L) cat(sprintf("Screening [R / %s] ...\n", r_shap))
   t0 <- proc.time()
 
-  screen_out <- .sf_R_screen(
+  screen_out <- .bf_R_screen(
     X                 = X,
     y                 = y,
     module_membership = module_membership_screen,
@@ -49,7 +49,8 @@
     nodesize          = nodesize,
     num_processors    = num_processors,
     seed              = seed,
-    verbose           = verbose >= 2L
+    verbose           = verbose >= 2L,
+    r_shap            = r_shap
   )
 
   runtime$Screen <- (proc.time() - t0)["elapsed"]
@@ -86,7 +87,7 @@
   if (verbose >= 1L) cat("Selecting stable features [R] ...\n")
   t0 <- proc.time()
 
-  sel_out <- .sf_R_select(
+  sel_out <- .bf_R_select(
     X_surv                 = X_surv,
     y                      = y,
     survivor_list          = survivor_list,
@@ -95,7 +96,8 @@
     nodesize               = nodesize,
     num_processors         = num_processors,
     seed                   = seed,
-    verbose                = verbose >= 1L
+    verbose                = verbose >= 1L,
+    r_shap                 = r_shap
   )
 
   runtime$Selection <- (proc.time() - t0)["elapsed"]
@@ -166,11 +168,11 @@
   # ── Compute SHAP values (method depends on r_shap) ───────────────────────────
   shap_result <- if (!is.null(final_rf) && n_stable > 0L) {
     switch(r_shap,
-      permutation = .sf_R_shap_permutation(final_rf, final_X, stable_features,
+      permutation = .bf_R_shap_permutation(final_rf, final_X, stable_features,
                                             verbose >= 1L),
-      fastshap    = .sf_R_shap_fastshap(final_rf, final_X, y, stable_features,
+      fastshap    = .bf_R_shap_fastshap(final_rf, final_X, y, stable_features,
                                          seed, verbose >= 1L),
-      treeshap    = .sf_R_shap_treeshap(final_rf, final_X, stable_features,
+      treeshap    = .bf_R_shap_treeshap(final_rf, final_X, stable_features,
                                          verbose >= 1L)
     )
   } else {
@@ -267,7 +269,7 @@
     names(survivor_list)
   )
 
-  shapley_forest(
+  bonsai_forest(
     final_rf          = final_rf,
     final_X           = final_X,
     module_membership = final_module_membership,
@@ -290,7 +292,7 @@
 # simply not available, while the variable_importance column in the output
 # data frame carries the permutation VIM.
 
-.sf_R_shap_permutation <- function(final_rf, final_X, stable_features, verbose) {
+.bf_R_shap_permutation <- function(final_rf, final_X, stable_features, verbose) {
   if (verbose) cat("  Using permutation VIM (no per-observation SHAP values).\n")
   list(
     shap_matrix        = matrix(NA_real_, nrow = nrow(final_X),
@@ -303,7 +305,7 @@
 
 # ── SHAP method 2: fastshap approximate SHAP ─────────────────────────────────
 
-.sf_R_shap_fastshap <- function(final_rf, final_X, y, stable_features,
+.bf_R_shap_fastshap <- function(final_rf, final_X, y, stable_features,
                                  seed, verbose) {
   if (!requireNamespace("fastshap", quietly = TRUE))
     stop("Install the 'fastshap' package to use r_shap = 'fastshap'.",
@@ -352,7 +354,7 @@
 
 # ── SHAP method 3: treeshap exact TreeSHAP + interaction matrix ──────────────
 
-.sf_R_shap_treeshap <- function(final_rf, final_X, stable_features, verbose) {
+.bf_R_shap_treeshap <- function(final_rf, final_X, stable_features, verbose) {
   if (!requireNamespace("treeshap", quietly = TRUE))
     stop("Install the 'treeshap' package to use r_shap = 'treeshap'.",
          call. = FALSE)
@@ -475,11 +477,33 @@
 
 # ── Phase 1: Screening (R backend) ───────────────────────────────────────────
 
-.sf_R_screen <- function(X, y, module_membership, screen_params,
-                          nodesize, num_processors, seed, verbose) {
+# ── TreeSHAP importance for a ranger forest (mean |SHAP| per feature) ─────────
+# Used when r_shap = "treeshap" so SCREENING and STABILITY SELECTION rank by
+# TreeSHAP (mirroring the Python engine) instead of ranger permutation VIM.
+# Requires the 'treeshap' package; supports regression + binary classification.
+.vim_treeshap_ranger <- function(rf, Xdata, feats) {
+  if (!requireNamespace("treeshap", quietly = TRUE))
+    stop("Install the 'treeshap' package to use r_shap = 'treeshap' for ",
+         "screening / stability selection.", call. = FALSE)
+  unified <- treeshap::ranger.unify(rf, Xdata)
+  ts      <- treeshap::treeshap(unified, Xdata, interactions = FALSE, verbose = FALSE)
+  ma      <- colMeans(abs(as.matrix(ts$shaps)), na.rm = TRUE)
+  out     <- setNames(rep(0.0, length(feats)), feats)
+  common  <- intersect(feats, names(ma))
+  out[common] <- ma[common]
+  out
+}
+
+
+.bf_R_screen <- function(X, y, module_membership, screen_params,
+                          nodesize, num_processors, seed, verbose,
+                          r_shap = "permutation") {
   sc             <- screen_params
   CLASSIFICATION <- is.factor(y)
+  use_ts         <- identical(r_shap, "treeshap")
   module_list    <- unique(module_membership)
+  # NOTE: unlike the Python backend, the pure-R backend applies NO blockwise
+  # pre-reduction (max_modsize is ignored); modules are screened whole.
 
   survivor_list <- vector("list", length(module_list))
   names(survivor_list) <- module_list
@@ -514,8 +538,10 @@
         seed          = as.integer(seed)
       )
 
-      vims   <- rf_step$variable.importance
-      n_drop <- max(1L, floor(sc$drop_fraction * cp))
+      vims   <- if (use_ts)
+        .vim_treeshap_ranger(rf_step, X_mod[, current_feats, drop = FALSE], current_feats)
+      else rf_step$variable.importance
+      n_drop <- max(1L, ceiling(sc$drop_fraction * cp))
       drop_i <- order(vims)[seq_len(n_drop)]
       current_feats <- setdiff(current_feats, current_feats[drop_i])
     }
@@ -539,7 +565,9 @@
       seed          = as.integer(seed)
     )
 
-    vims_fin <- rf_fin$variable.importance
+    vims_fin <- if (use_ts)
+      .vim_treeshap_ranger(rf_fin, X_mod[, current_feats, drop = FALSE], current_feats)
+    else rf_fin$variable.importance
 
     surv_df <- data.frame(
       features    = current_feats,
@@ -567,7 +595,7 @@
 }
 
 
-# ── DML cross-fitted residualization (R backend, mirrors Python) ─────────────
+# ── cfRes cross-fitted residualization (R backend, mirrors Python) ─────────────
 .cross_fit_residuals_R <- function(X_corr, y_num, k_folds = 5L, ntree = 300L,
                                     mtry_factor = 1, nodesize = 5L,
                                     seed = 42L, num_processors = 1L) {
@@ -594,29 +622,31 @@
 
 # ── Phase 2: Shadow-stability selection (R backend) ──────────────────────────
 
-.sf_R_select <- function(X_surv, y, survivor_list, select_params,
+.bf_R_select <- function(X_surv, y, survivor_list, select_params,
                           module_membership_surv,
-                          nodesize, num_processors, seed, verbose) {
+                          nodesize, num_processors, seed, verbose,
+                          r_shap = "permutation") {
   sl             <- select_params
   CLASSIFICATION <- is.factor(y)
+  use_ts         <- identical(r_shap, "treeshap")
   n              <- nrow(X_surv)
   all_feats      <- colnames(X_surv)
   shadow_pct     <- sl$shadow_percentile / 100.0
 
   y_num     <- if (CLASSIFICATION) as.numeric(as.integer(y)) else as.numeric(y)
-  indep_set <- if (!is.null(sl$indep_modules)) as.character(sl$indep_modules) else character(0L)
+  unassigned_set <- if (!is.null(sl$unassigned_modules)) as.character(sl$unassigned_modules) else character(0L)
 
-  # DML residualized target for the independent pool (scope = "indep")
+  # cfRes residualized target for the unassigned pool (scope = "unassigned")
   y_for_ind <- y_num
-  if (isTRUE(sl$use_dml_residual) && identical(sl$dml_scope, "indep") &&
-      length(indep_set) > 0L) {
-    corr_feats <- all_feats[!(module_membership_surv[all_feats] %in% indep_set)]
+  if (isTRUE(sl$use_cfres) && identical(sl$cfres_scope, "unassigned") &&
+      length(unassigned_set) > 0L) {
+    corr_feats <- all_feats[!(module_membership_surv[all_feats] %in% unassigned_set)]
     if (length(corr_feats) > 0L) {
-      if (verbose) cat(sprintf("  DML: residualizing y by %d corr features (%d folds)\n",
-                               length(corr_feats), sl$dml_n_folds))
+      if (verbose) cat(sprintf("  cfRes: residualizing y by %d corr features (%d folds)\n",
+                               length(corr_feats), sl$cfres_n_folds))
       y_for_ind <- .cross_fit_residuals_R(
         X_surv[, corr_feats, drop = FALSE], y_num,
-        k_folds = sl$dml_n_folds, ntree = sl$dml_ntree,
+        k_folds = sl$cfres_n_folds, ntree = sl$cfres_ntree,
         mtry_factor = sl$mtry_factor, nodesize = nodesize,
         seed = seed + 88317L, num_processors = num_processors)
     }
@@ -646,7 +676,9 @@
         importance = "permutation", min.node.size = as.integer(nodesize),
         probability = classif_pool, verbose = FALSE,
         num.threads = as.integer(num_processors), seed = as.integer(bseed))
-      vim_b    <- rf_b$variable.importance
+      vim_b    <- if (use_ts)
+        .vim_treeshap_ranger(rf_b, Xb_aug, colnames(Xb_aug))
+      else rf_b$variable.importance
       real_vim <- vim_b[pool_feats]; shad_vim <- vim_b[shad_nms]
       shad_thr <- stats::quantile(shad_vim, probs = shadow_pct, na.rm = TRUE)
       winners  <- pool_feats[!is.na(real_vim) & real_vim > shad_thr]
@@ -665,7 +697,7 @@
     list(names = pool_feats[ord], freqs = as.numeric(fr[ord]))
   }
 
-  # ── build pool specs (name, feats, is_indep) ───────────────────────────────
+  # ── build pool specs (name, feats, is_unassigned) ───────────────────────────────
   shadow_mode <- sl$shadow_mode
   if (!shadow_mode %in% c("within_module", "split")) shadow_mode <- "split"
   pool_specs <- list()
@@ -673,16 +705,16 @@
     grp <- split(all_feats, module_membership_surv[all_feats])
     for (nm in names(grp))
       pool_specs[[length(pool_specs) + 1L]] <-
-        list(name = nm, feats = grp[[nm]], is_indep = nm %in% indep_set)
-  } else if (length(indep_set) > 0L) {
-    corr_feats  <- all_feats[!(module_membership_surv[all_feats] %in% indep_set)]
-    indep_feats <- all_feats[  module_membership_surv[all_feats] %in% indep_set]
+        list(name = nm, feats = grp[[nm]], is_unassigned = nm %in% unassigned_set)
+  } else if (length(unassigned_set) > 0L) {
+    corr_feats  <- all_feats[!(module_membership_surv[all_feats] %in% unassigned_set)]
+    unassigned_feats <- all_feats[  module_membership_surv[all_feats] %in% unassigned_set]
     if (length(corr_feats)  > 0L)
-      pool_specs[[length(pool_specs)+1L]] <- list(name="corr",  feats=corr_feats,  is_indep=FALSE)
-    if (length(indep_feats) > 0L)
-      pool_specs[[length(pool_specs)+1L]] <- list(name="indep", feats=indep_feats, is_indep=TRUE)
+      pool_specs[[length(pool_specs)+1L]] <- list(name="corr",  feats=corr_feats,  is_unassigned=FALSE)
+    if (length(unassigned_feats) > 0L)
+      pool_specs[[length(pool_specs)+1L]] <- list(name="unassigned", feats=unassigned_feats, is_unassigned=TRUE)
   } else {
-    pool_specs[[1L]] <- list(name = "all", feats = all_feats, is_indep = FALSE)
+    pool_specs[[1L]] <- list(name = "all", feats = all_feats, is_unassigned = FALSE)
   }
 
   pool_stability <- list(); all_stable <- character(0L)
@@ -690,20 +722,20 @@
     ps <- pool_specs[[si]]
     if (length(ps$feats) == 0L) next
 
-    # DML-residualized target -> CONTINUOUS -> fit this pool as REGRESSION
+    # cfRes-residualized target -> CONTINUOUS -> fit this pool as REGRESSION
     y_pool <- y; classif_pool <- CLASSIFICATION; use_resid <- FALSE
-    if (isTRUE(sl$use_dml_residual)) {
-      if (identical(sl$dml_scope, "all_modules")) {
+    if (isTRUE(sl$use_cfres)) {
+      if (identical(sl$cfres_scope, "all_modules")) {
         other <- setdiff(all_feats, ps$feats)
         if (length(other) > 0L) {
           y_pool <- .cross_fit_residuals_R(
             X_surv[, other, drop = FALSE], y_num,
-            k_folds = sl$dml_n_folds, ntree = sl$dml_ntree,
+            k_folds = sl$cfres_n_folds, ntree = sl$cfres_ntree,
             mtry_factor = sl$mtry_factor, nodesize = nodesize,
             seed = seed + 88317L + si * 997L, num_processors = num_processors)
           classif_pool <- FALSE; use_resid <- TRUE
         }
-      } else if (ps$is_indep) {           # scope = "indep"
+      } else if (ps$is_unassigned) {           # scope = "unassigned"
         y_pool <- y_for_ind; classif_pool <- FALSE; use_resid <- TRUE
       }
     }
@@ -715,10 +747,10 @@
 
     rp <- run_pool(ps$feats, y_pool, classif_pool, seed + si)
 
-    use_elbow_pool <- identical(sl$threshold_mode, "elbow") || ps$is_indep
-    thr_val <- if (ps$is_indep && !is.null(sl$pi_thr_indep))
-                 as.numeric(sl$pi_thr_indep) else as.numeric(sl$pi_thr)
-    if (ps$is_indep && is.null(sl$pi_thr_indep)) use_elbow_pool <- TRUE
+    use_elbow_pool <- identical(sl$threshold_mode, "elbow") || ps$is_unassigned
+    thr_val <- if (ps$is_unassigned && !is.null(sl$pi_thr_unassigned))
+                 as.numeric(sl$pi_thr_unassigned) else as.numeric(sl$pi_thr)
+    if (ps$is_unassigned && is.null(sl$pi_thr_unassigned)) use_elbow_pool <- TRUE
     res <- .apply_stable_threshold_R(rp$names, rp$freqs, thr_val,
                                       use_elbow = use_elbow_pool)
     all_stable <- c(all_stable, res$stable)

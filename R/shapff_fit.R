@@ -1,6 +1,6 @@
-#' Shapley Forest Feature Selection
+#' Bonsai Forest Feature Selection
 #'
-#' Runs the Shapley Forest algorithm: module-stratified recursive feature
+#' Runs the Bonsai Forest algorithm: module-stratified recursive feature
 #' elimination (screening), followed by shadow-stability selection, and a
 #' single-shot SHAP importance pass on the stable feature set.
 #'
@@ -33,6 +33,10 @@
 #'                          Default \code{1}.
 #' @param seed              Integer random seed for reproducibility. Defaults to
 #'                          current system time.
+#' @param compute_interactions Logical. If \code{TRUE} (default), the Python
+#'                          backend computes the TreeSHAP interaction matrix.
+#'                          Set \code{FALSE} to skip it (faster). Ignored by the
+#'                          pure-R backend unless \code{r_shap = "treeshap"}.
 #' @param backend           Computation backend. \code{"python"} (default) uses
 #'                          a Python scikit-learn / SHAP engine via
 #'                          \pkg{reticulate} and provides exact TreeSHAP values
@@ -58,11 +62,11 @@
 #'       \code{plot_potential_interactions()}.}
 #'   }
 #'
-#' @return An object of class \code{\link{shapley_forest}}.
+#' @return An object of class \code{\link{bonsai_forest}}.
 #'
 #' @references
 #' Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C.,
-#'   Newey, W., & Robins, J. (2018). Double/debiased machine learning for
+#'   Newey, W., & Robins, J. (2018). Double/cross-fit residualed machine learning for
 #'   treatment and structural parameters. \emph{The Econometrics Journal},
 #'   21(1), C1–C68.
 #'
@@ -74,20 +78,20 @@
 #'
 #' @examples
 #' \dontrun{
-#'   sf_setup(condaenv = "sfenv")
+#'   bf_setup(condaenv = "sfenv")
 #'
 #'   data(iris)
 #'   X   <- iris[, 1:4]
 #'   y   <- iris$Species
 #'   mem <- setNames(c("A","A","B","B"), colnames(X))
 #'
-#'   res <- sf(X, y, module_membership = mem,
+#'   res <- bf(X, y, module_membership = mem,
 #'             screen_params = screen_control(min_ntree = 100),
 #'             select_params = select_control(n_boots = 25))
 #'   print(res)
 #'   plot_importance(res)
 #' }
-sf <- function(X, y,
+bf <- function(X, y,
                module_membership,
                screen_params   = screen_control(),
                select_params   = select_control(),
@@ -98,6 +102,7 @@ sf <- function(X, y,
                auto_initial    = "4",
                verbose         = 1L,
                seed            = as.integer(Sys.time()),
+               compute_interactions = TRUE,
                backend         = "python",
                r_shap          = "permutation") {
 
@@ -136,7 +141,7 @@ sf <- function(X, y,
   # R backend — pure ranger, no Python required
   # ══════════════════════════════════════════════════════════════════════════════
   if (backend == "R") {
-    return(.sf_R_backend(
+    return(.bf_R_backend(
       X = X, y = y,
       module_membership        = module_membership,
       module_membership_screen = module_membership_screen,
@@ -166,7 +171,7 @@ sf <- function(X, y,
   if (verbose >= 1L) cat("Screening ...\n")
   t0 <- proc.time()
 
-  screen_py <- .sf_py$run_screen_rfe(
+  screen_py <- .bf_py$run_screen_rfe(
     X_mat              = X_mat,
     y                  = y_py,
     feature_names      = feature_names,
@@ -251,7 +256,7 @@ sf <- function(X, y,
     mean(as.numeric(df[, 2L]), na.rm = TRUE)
   }, numeric(1L))
 
-  select_py <- .sf_py$run_select_rfe(
+  select_py <- .bf_py$run_select_rfe(
     X_surv_mat              = X_surv_mat,
     y                       = y_py,
     feature_names_surv      = as.list(colnames(X_surv)),
@@ -268,22 +273,23 @@ sf <- function(X, y,
     max_modsize             = as.integer(max_modsize),
     n_boots                 = as.integer(sl$n_boots),
     pi_thr                  = as.numeric(sl$pi_thr),
+    compute_interactions    = as.logical(compute_interactions),
     shadow_mode             = sl$shadow_mode,
     shadow_percentile       = as.numeric(sl$shadow_percentile),
-    pi_thr_indep            = if (!is.null(sl$pi_thr_indep))
-                                as.numeric(sl$pi_thr_indep) else NULL,
+    pi_thr_unassigned            = if (!is.null(sl$pi_thr_unassigned))
+                                as.numeric(sl$pi_thr_unassigned) else NULL,
     threshold_mode          = sl$threshold_mode,
     mtry_rule               = sl$mtry_rule,
     mtry_on_real            = as.logical(sl$mtry_on_real),
     early_stop_boots        = as.logical(sl$early_stop_boots),
     early_stop_tol          = as.numeric(sl$early_stop_tol),
     early_stop_check_every  = as.integer(sl$early_stop_check_every),
-    indep_modules           = if (!is.null(sl$indep_modules))
-                                as.list(sl$indep_modules) else NULL,
-    use_dml_residual        = as.logical(sl$use_dml_residual),
-    dml_n_folds             = as.integer(sl$dml_n_folds),
-    dml_ntree               = as.integer(sl$dml_ntree),
-    dml_scope               = sl$dml_scope,
+    unassigned_modules           = if (!is.null(sl$unassigned_modules))
+                                as.list(sl$unassigned_modules) else NULL,
+    use_cfres        = as.logical(sl$use_cfres),
+    cfres_n_folds             = as.integer(sl$cfres_n_folds),
+    cfres_ntree               = as.integer(sl$cfres_ntree),
+    cfres_scope               = sl$cfres_scope,
     verbose                 = as.logical(verbose >= 2L)
   )
 
@@ -474,7 +480,7 @@ sf <- function(X, y,
   if (verbose >= 1L) cat("Done.\n")
   options(warn = 1)
 
-  shapley_forest(
+  bonsai_forest(
     final_rf          = final_rf,
     final_X           = final_X,
     module_membership = final_module_membership,
@@ -491,15 +497,15 @@ sf <- function(X, y,
 }
 
 
-#' Shapley Forest with WGCNA Module Detection
+#' Bonsai Forest with WGCNA Module Detection
 #'
 #' Runs a Weighted Gene Co-expression Network Analysis (WGCNA) to derive
-#' module membership, then passes the result to \code{\link{sf}}.
+#' module membership, then passes the result to \code{\link{bf}}.
 #'
-#' @inheritParams sf
+#' @inheritParams bf
 #' @param WGCNA_params WGCNA parameters. See \code{\link{WGCNA_control}}.
 #'
-#' @return An object of class \code{\link{shapley_forest}} with an additional
+#' @return An object of class \code{\link{bonsai_forest}} with an additional
 #'   \code{$WGCNA_object} slot containing the raw WGCNA output.
 #'
 #' @export
@@ -509,7 +515,7 @@ sf <- function(X, y,
 #' Zhang, B., & Horvath, S. (2005). A general framework for weighted gene
 #'   co-expression network analysis. \emph{Statistical Applications in Genetics
 #'   and Molecular Biology}, 4(1), Article 17.
-wsf <- function(X, y,
+wbf <- function(X, y,
                 WGCNA_params  = WGCNA_control(p = 6),
                 screen_params = screen_control(),
                 select_params = select_control(),
@@ -524,7 +530,7 @@ wsf <- function(X, y,
                 r_shap        = "permutation") {
 
   if (!requireNamespace("WGCNA", quietly = TRUE))
-    stop("Package 'WGCNA' is required for wsf(). Install it first.", call. = FALSE)
+    stop("Package 'WGCNA' is required for wbf(). Install it first.", call. = FALSE)
   # WGCNA's blockwiseModules calls cor() with extra args (weights.x, cosine, ...)
   # that only WGCNA::cor understands.  When WGCNA is only namespace-loaded
   # (not library()-attached) the lookup resolves to stats::cor and errors.
@@ -555,7 +561,7 @@ wsf <- function(X, y,
   }
   module_membership <- bwise$colors
 
-  out <- sf(
+  out <- bf(
     X = X, y = y,
     module_membership = module_membership,
     screen_params     = screen_params,

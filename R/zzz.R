@@ -1,17 +1,17 @@
 # ── Internal Python environment ───────────────────────────────────────────────
-.sf_py <- new.env(parent = emptyenv())
-.sf_py$loaded <- FALSE
+.bf_py <- new.env(parent = emptyenv())
+.bf_py$loaded <- FALSE
 
 .onAttach <- function(libname, pkgname) {
   packageStartupMessage(
-    "Shapley Forest loaded. Run sf_setup() to configure the Python environment."
+    "Bonsai Forest loaded. Run bf_setup() to configure the Python environment."
   )
 }
 
-#' Configure the Python environment for Shapley Forest
+#' Configure the Python environment for Bonsai Forest
 #'
-#' Tells Shapley Forest which Python installation to use for its backend.
-#' Call this once at the start of each R session before using \code{\link{sf}}.
+#' Tells Bonsai Forest which Python installation to use for its backend.
+#' Call this once at the start of each R session before using \code{\link{bf}}.
 #'
 #' @param python     Path to a Python binary. Passed to
 #'                   \code{reticulate::use_python()}.
@@ -33,10 +33,10 @@
 #' @export
 #' @examples
 #' \dontrun{
-#'   sf_setup(condaenv = "sfenv")
-#'   sf_setup(python = "/usr/local/bin/python3")
+#'   bf_setup(condaenv = "sfenv")
+#'   bf_setup(python = "/usr/local/bin/python3")
 #' }
-sf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
+bf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
   if (!requireNamespace("reticulate", quietly = TRUE))
     stop("Package 'reticulate' is required. Install with: install.packages('reticulate')",
          call. = FALSE)
@@ -52,7 +52,7 @@ sf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
   invisible(NULL)
 }
 
-# Internal: load the bundled Python backend into .sf_py
+# Internal: load the bundled Python backend into .bf_py
 .load_python_backend <- function() {
   if (!requireNamespace("reticulate", quietly = TRUE))
     stop("Package 'reticulate' is required. Install with: install.packages('reticulate')",
@@ -63,19 +63,19 @@ sf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
   if (!nzchar(Sys.getenv("PYTHONIOENCODING")))
     Sys.setenv(PYTHONIOENCODING = "utf-8")
 
-  py_file <- system.file("python", "sf_python_backend.py",
-                          package = "shapleyforest")
+  py_file <- system.file("python", "bf_python_backend.py",
+                          package = "bonsaiforest")
   if (!nzchar(py_file) || !file.exists(py_file))
-    stop("Shapley Forest Python backend not found in package installation.",
+    stop("Bonsai Forest Python backend not found in package installation.",
          call. = FALSE)
 
-  reticulate::source_python(py_file, envir = .sf_py)
-  .sf_py$loaded <- TRUE
+  reticulate::source_python(py_file, envir = .bf_py)
+  .bf_py$loaded <- TRUE
   invisible(NULL)
 }
 
 # Internal: ensure Python backend is ready, loading lazily on first call
 .ensure_python <- function() {
-  if (isTRUE(.sf_py$loaded)) return(invisible(NULL))
+  if (isTRUE(.bf_py$loaded)) return(invisible(NULL))
   .load_python_backend()
 }

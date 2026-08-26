@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_importance}
 \alias{plot_importance}
-\alias{plot_importance.shapley_forest}
-\title{Plot Feature Importance for a Shapley Forest Object}
+\alias{plot_importance.bonsai_forest}
+\title{Plot Feature Importance for a Bonsai Forest Object}
 \usage{
 plot_importance(object, ...)
 
-\method{plot_importance}{shapley_forest}(
+\method{plot_importance}{bonsai_forest}(
   object,
   kind = "beeswarm",
   color_bar_title = "Feature Value",
@@ -20,7 +20,7 @@ plot_importance(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{shapley_forest} object.}
+\item{object}{A \code{bonsai_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -49,12 +49,12 @@ for the beeswarm colour scale. Default
 A \code{ggplot2} object (invisibly).
 }
 \description{
-Generates a feature importance plot from a \code{shapley_forest} object.
+Generates a feature importance plot from a \code{bonsai_forest} object.
 Three plot types are available: bar, beeswarm, and both. Plots are built
 via \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_importance(shapley_forest)}: Importance plot for a \code{shapley_forest} object.
+\item \code{plot_importance(bonsai_forest)}: Importance plot for a \code{bonsai_forest} object.
 
 }}

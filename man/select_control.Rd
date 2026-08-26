@@ -7,21 +7,21 @@
 select_control(
   drop_fraction = 0.1,
   mtry_factor = 1,
+  mtry_rule = "auto",
+  mtry_on_real = FALSE,
   min_ntree = 500L,
-  ntree_factor = 1L,
+  ntree_factor = 1,
   shadow_mode = "split",
   n_boots = 50L,
   pi_thr = 0.6,
-  pi_thr_indep = NULL,
-  shadow_percentile = 95,
-  indep_modules = NULL,
-  use_dml_residual = FALSE,
-  dml_n_folds = 5L,
-  dml_ntree = 300L,
-  dml_scope = "indep",
-  mtry_rule = "auto",
-  mtry_on_real = FALSE,
+  pi_thr_unassigned = NULL,
   threshold_mode = "pi_thr",
+  shadow_percentile = 95,
+  unassigned_modules = NULL,
+  use_cfres = FALSE,
+  cfres_n_folds = 5L,
+  cfres_ntree = 300L,
+  cfres_scope = "unassigned",
   early_stop_boots = FALSE,
   early_stop_tol = 0.01,
   early_stop_check_every = 10L
@@ -35,12 +35,22 @@ during survivor-pool pre-reduction. Default
 \item{mtry_factor}{\code{mtry} multiplier for shadow-stability random
 forests. Default \code{1}.}
 
+\item{mtry_rule}{How \code{mtry} is derived from the feature count.
+One of \code{"auto"} (default), \code{"sqrt"},
+\code{"p_over_3"}. See \code{\link{screen_control}}.}
+
+\item{mtry_on_real}{Logical. If \code{TRUE}, \code{mtry} on the augmented
+\eqn{[real | shadow]} matrix is \code{2 * rule(p_real)}
+so real-feature sampling is not diluted by the shadows.
+A statistical correction, not a speed-up.
+Default \code{FALSE}.}
+
 \item{min_ntree}{Minimum trees per forest. Default \code{500}.}
 
 \item{ntree_factor}{Trees per forest scaling factor. Default \code{1}.}
 
 \item{shadow_mode}{Shadow stability pooling strategy. One of
-\code{"split"} (correlated and independent pools
+\code{"split"} (correlated and unassigned pools
 evaluated separately) or \code{"within_module"}
 (one shadow run per module). Default \code{"split"}.}
 
@@ -52,50 +62,40 @@ features. A feature is selected if its shadow-win
 rate across bootstraps exceeds \code{pi_thr}.
 Default \code{0.60}.}
 
-\item{pi_thr_indep}{Stability threshold for the independent pool.
+\item{pi_thr_unassigned}{Stability threshold for the unassigned pool.
 \code{NULL} (default) uses an automatic elbow
 detection rule.}
+
+\item{threshold_mode}{Selection cutoff rule. \code{"pi_thr"} (default) uses
+the fixed \code{pi_thr} for the correlated pool and
+elbow detection for the unassigned pool;
+\code{"elbow"} applies the adaptive elbow rule to
+\emph{both} pools.}
 
 \item{shadow_percentile}{Percentile of the shadow-feature distribution used
 as the importance threshold within each bootstrap.
 Default \code{95}.}
 
-\item{indep_modules}{Character vector of module names treated as
-the independent pool (e.g. \code{"M10_indep"}).
+\item{unassigned_modules}{Character vector of module names treated as
+the unassigned pool (e.g. \code{"M10_unassigned"}).
 \code{NULL} disables split-pool logic.}
 
-\item{use_dml_residual}{Logical. If \code{TRUE}, a cross-fitted random
+\item{use_cfres}{Logical. If \code{TRUE}, a cross-fitted random
 forest is used to residualize \code{y} before the
-independent-pool stability step, reducing confounding
+unassigned-pool stability step, reducing confounding
 from correlated modules. Default \code{FALSE}.}
 
-\item{dml_n_folds}{Number of cross-fitting folds for DML
+\item{cfres_n_folds}{Number of cross-fitting folds for cfRes
 residualization. Default \code{5}.}
 
-\item{dml_ntree}{Trees per fold-forest in DML residualization.
+\item{cfres_ntree}{Trees per fold-forest in cfRes residualization.
 Default \code{300}.}
 
-\item{dml_scope}{Scope of DML residualization. \code{"indep"}
-(default) applies DML only to the independent pool.
-\code{"all_modules"} applies per-module DML to
+\item{cfres_scope}{Scope of cfRes residualization. \code{"unassigned"}
+(default) applies cfRes only to the unassigned pool.
+\code{"all_modules"} applies per-module cfRes to
 every module (removes the contribution of all other
 modules before that module's stability run).}
-
-\item{mtry_rule}{How \code{mtry} is derived from the feature count.
-One of \code{"auto"} (default), \code{"sqrt"},
-\code{"p_over_3"}. See \code{\link{screen_control}}.}
-
-\item{mtry_on_real}{Logical. If \code{TRUE}, \code{mtry} on the augmented
-\eqn{[real | shadow]} matrix is \code{2 * rule(p_real)}
-so real-feature sampling is not diluted by the shadows.
-A statistical correction, not a speed-up.
-Default \code{FALSE}.}
-
-\item{threshold_mode}{Selection cutoff rule. \code{"pi_thr"} (default) uses
-the fixed \code{pi_thr} for the correlated pool and
-elbow detection for the independent pool;
-\code{"elbow"} applies the adaptive elbow rule to
-\emph{both} pools.}
 
 \item{early_stop_boots}{Logical. If \code{TRUE}, stop the bootstrap loop once
 selection frequencies converge. Default \code{FALSE}.}
@@ -113,8 +113,8 @@ An object of class \code{select_control}.
 }
 \description{
 Creates a parameter object controlling the shadow-stability selection step
-of \code{\link{sf}}.
+of \code{\link{bf}}.
 }
 \seealso{
-\code{\link{screen_control}}, \code{\link{sf}}
+\code{\link{screen_control}}, \code{\link{bf}}
 }

@@ -1,10 +1,10 @@
-#' Plot Feature Importance for a Shapley Forest Object
+#' Plot Feature Importance for a Bonsai Forest Object
 #'
-#' Generates a feature importance plot from a \code{shapley_forest} object.
+#' Generates a feature importance plot from a \code{bonsai_forest} object.
 #' Three plot types are available: bar, beeswarm, and both. Plots are built
 #' via \link[shapviz]{shapviz}.
 #'
-#' @param object          A \code{shapley_forest} object.
+#' @param object          A \code{bonsai_forest} object.
 #' @param kind            Plot type: \code{"bar"}, \code{"beeswarm"}, or
 #'                        \code{"both"}. Default \code{"beeswarm"}.
 #' @param color_bar_title Title for the colour bar in the beeswarm plot.
@@ -30,9 +30,9 @@ plot_importance <- function(object, ...) {
   UseMethod("plot_importance")
 }
 
-#' @describeIn plot_importance Importance plot for a \code{shapley_forest} object.
+#' @describeIn plot_importance Importance plot for a \code{bonsai_forest} object.
 #' @export
-plot_importance.shapley_forest <- function(object,
+plot_importance.bonsai_forest <- function(object,
                                            kind            = "beeswarm",
                                            color_bar_title = "Feature Value",
                                            max_display     = NULL,
@@ -85,12 +85,12 @@ plot_importance.shapley_forest <- function(object,
 }
 
 
-#' Plot Waterfall for Specific Observations in a Shapley Forest Object
+#' Plot Waterfall for Specific Observations in a Bonsai Forest Object
 #'
 #' Generates a SHAP waterfall plot for one or more observations. Plots are
 #' built via \link[shapviz]{shapviz}.
 #'
-#' @param object        A \code{shapley_forest} object.
+#' @param object        A \code{bonsai_forest} object.
 #' @param row_id        Row index (or indices) for the observation(s) to plot.
 #'                      When multiple indices are given, SHAP values are averaged.
 #' @param row_name      Optional name(s) for the observation(s).
@@ -114,9 +114,9 @@ plot_waterfall <- function(object, ...) {
   UseMethod("plot_waterfall")
 }
 
-#' @describeIn plot_waterfall Waterfall plot for a \code{shapley_forest} object.
+#' @describeIn plot_waterfall Waterfall plot for a \code{bonsai_forest} object.
 #' @export
-plot_waterfall.shapley_forest <- function(object,
+plot_waterfall.bonsai_forest <- function(object,
                                           row_id,
                                           row_name        = NULL,
                                           max_display     = NULL,
@@ -177,12 +177,12 @@ plot_waterfall.shapley_forest <- function(object,
 }
 
 
-#' Plot SHAP Force Plot for Specific Observations in a Shapley Forest Object
+#' Plot SHAP Force Plot for Specific Observations in a Bonsai Forest Object
 #'
 #' Generates a SHAP force plot for one or more observations. Plots are built
 #' via \link[shapviz]{shapviz}.
 #'
-#' @param object          A \code{shapley_forest} object.
+#' @param object          A \code{bonsai_forest} object.
 #' @param row_id          Row index (or indices) for the observation(s) to plot.
 #' @param row_name        Optional name(s) for the observation(s).
 #' @param max_display     Maximum number of features to display. \code{NULL}
@@ -203,9 +203,9 @@ plot_force <- function(object, ...) {
   UseMethod("plot_force")
 }
 
-#' @describeIn plot_force Force plot for a \code{shapley_forest} object.
+#' @describeIn plot_force Force plot for a \code{bonsai_forest} object.
 #' @export
-plot_force.shapley_forest <- function(object,
+plot_force.bonsai_forest <- function(object,
                                       row_id,
                                       row_name        = NULL,
                                       max_display     = NULL,
@@ -264,12 +264,12 @@ plot_force.shapley_forest <- function(object,
 }
 
 
-#' Plot Shadow-Stability Frequencies for a Shapley Forest Object
+#' Plot Shadow-Stability Frequencies for a Bonsai Forest Object
 #'
 #' Displays the bootstrap shadow-stability selection frequency for each stable
 #' feature as a horizontal bar chart. Features are sorted by frequency.
 #'
-#' @param object  A \code{shapley_forest} object.
+#' @param object  A \code{bonsai_forest} object.
 #' @param fill    Bar colour. Default \code{"#3e568a"}.
 #' @param main    Plot title. Default \code{"Shadow-Stability Frequencies"}.
 #' @param ...     Ignored.
@@ -282,16 +282,16 @@ plot_stability <- function(object, ...) {
   UseMethod("plot_stability")
 }
 
-#' @describeIn plot_stability Stability frequency plot for a \code{shapley_forest} object.
+#' @describeIn plot_stability Stability frequency plot for a \code{bonsai_forest} object.
 #' @export
-plot_stability.shapley_forest <- function(object,
+plot_stability.bonsai_forest <- function(object,
                                           fill = "#3e568a",
                                           main = "Shadow-Stability Frequencies",
                                           ...) {
 
   freq <- object$stability_freq
   if (is.null(freq) || length(freq) == 0)
-    stop("No stability frequencies found in this shapley_forest object.")
+    stop("No stability frequencies found in this bonsai_forest object.")
 
   df <- data.frame(
     feature   = names(freq),
@@ -314,22 +314,22 @@ plot_stability.shapley_forest <- function(object,
 }
 
 
-#' Plot Shadow-Stability Selection Curves for a Shapley Forest Object
+#' Plot Shadow-Stability Selection Curves for a Bonsai Forest Object
 #'
 #' Displays the shadow-bootstrap stability frequency curve for each selection
 #' pool with a horizontal threshold line and coloured points indicating which
 #' features were selected.
 #'
 #' For \code{shadow_mode = "split"} two panels are shown: one for the
-#' correlated pool (fixed \eqn{\pi} threshold) and one for the independent
+#' correlated pool (fixed \eqn{\pi} threshold) and one for the unassigned
 #' pool (elbow or fixed threshold).  For \code{shadow_mode = "within_module"}
 #' one panel is shown per module.
 #'
-#' The dashed red line marks the stability threshold applied. For independent
+#' The dashed red line marks the stability threshold applied. For unassigned
 #' pools with elbow detection the elbow rank is marked with a vertical dotted
 #' line.
 #'
-#' @param object         A \code{shapley_forest} object.
+#' @param object         A \code{bonsai_forest} object.
 #' @param col_selected   Point colour for selected features.
 #'                       Default \code{"#3e568a"}.
 #' @param col_unselected Point colour for unselected features.
@@ -354,9 +354,9 @@ plot_stability_elbow <- function(object, ...) {
 }
 
 #' @describeIn plot_stability_elbow Stability elbow plot for a
-#'   \code{shapley_forest} object.
+#'   \code{bonsai_forest} object.
 #' @export
-plot_stability_elbow.shapley_forest <- function(object,
+plot_stability_elbow.bonsai_forest <- function(object,
                                                  col_selected   = "#3e568a",
                                                  col_unselected = "gray65",
                                                  col_threshold  = "tomato",
@@ -369,8 +369,8 @@ plot_stability_elbow.shapley_forest <- function(object,
   sd <- object$stability_data
   if (is.null(sd) || nrow(sd) == 0L)
     stop(paste0(
-      "No stability selection data found in this shapley_forest object.\n",
-      "  Refit with sf() to populate stability_data."
+      "No stability selection data found in this bonsai_forest object.\n",
+      "  Refit with bf() to populate stability_data."
     ), call. = FALSE)
 
   # ── ensure factor order: pools in the order they appear ─────────────────────
@@ -450,12 +450,12 @@ plot_stability_elbow.shapley_forest <- function(object,
 }
 
 
-#' Plot Potential Interaction Matrix for a Shapley Forest Object
+#' Plot Potential Interaction Matrix for a Bonsai Forest Object
 #'
 #' Generates a heatmap of pairwise SHAP-based potential interaction strengths
 #' for all stable features.
 #'
-#' @param object A \code{shapley_forest} object.
+#' @param object A \code{bonsai_forest} object.
 #' @param ...    Ignored.
 #'
 #' @return A \code{ggplot2} object (invisibly).
@@ -467,15 +467,15 @@ plot_potential_interactions <- function(object, ...) {
 }
 
 #' @describeIn plot_potential_interactions Interaction heatmap for a
-#'   \code{shapley_forest} object (uses exact TreeSHAP interaction values).
+#'   \code{bonsai_forest} object (uses exact TreeSHAP interaction values).
 #' @export
-plot_potential_interactions.shapley_forest <- function(object, ...) {
+plot_potential_interactions.bonsai_forest <- function(object, ...) {
 
   int_mat <- object$shap_obj$interaction_matrix
   if (is.null(int_mat) || !is.matrix(int_mat))
     stop(paste0(
       "No interaction matrix found. ",
-      "Refit with sf() to compute TreeSHAP interaction values."
+      "Refit with bf() to compute TreeSHAP interaction values."
     ), call. = FALSE)
 
   feats <- rownames(int_mat)
@@ -546,12 +546,12 @@ plot_potential_interactions.shapley_forest <- function(object, ...) {
 }
 
 
-#' Plot Decision Plot for a Shapley Forest Object
+#' Plot Decision Plot for a Bonsai Forest Object
 #'
 #' Creates a cumulative SHAP decision plot adapted from the Python \code{shap}
 #' package.
 #'
-#' @param object     A \code{shapley_forest} object. If \code{just_shap = TRUE},
+#' @param object     A \code{bonsai_forest} object. If \code{just_shap = TRUE},
 #'                   pass a data frame of SHAP values instead.
 #' @param highlight  Row indices or feature names to highlight. \code{NULL}
 #'                   shows all observations. Default \code{NULL}.
@@ -572,9 +572,9 @@ plot_decisions <- function(object, ...) {
   UseMethod("plot_decisions")
 }
 
-#' @describeIn plot_decisions Decision plot for a \code{shapley_forest} object.
+#' @describeIn plot_decisions Decision plot for a \code{bonsai_forest} object.
 #' @export
-plot_decisions.shapley_forest <- function(object,
+plot_decisions.bonsai_forest <- function(object,
                                           highlight  = NULL,
                                           just_shap  = FALSE,
                                           plot_title = "Decision Plot",
@@ -681,12 +681,12 @@ plot_decisions.shapley_forest <- function(object,
 }
 
 
-#' Plot Module Membership Distribution for a Shapley Forest Object
+#' Plot Module Membership Distribution for a Bonsai Forest Object
 #'
 #' Shows the proportion of features per module that were selected as stable,
 #' coloured by selection status.
 #'
-#' @param object        A \code{shapley_forest} object.
+#' @param object        A \code{bonsai_forest} object.
 #' @param main          Plot title. Default \code{"Module Membership Distribution"}.
 #' @param xlab          X-axis label. Default \code{"Module"}.
 #' @param ylab          Y-axis label. Default \code{"Proportion of features"}.
@@ -702,9 +702,9 @@ plot_modules <- function(object, ...) {
   UseMethod("plot_modules")
 }
 
-#' @describeIn plot_modules Module membership plot for a \code{shapley_forest} object.
+#' @describeIn plot_modules Module membership plot for a \code{bonsai_forest} object.
 #' @export
-plot_modules.shapley_forest <- function(object,
+plot_modules.bonsai_forest <- function(object,
                                         main          = NULL,
                                         xlab          = NULL,
                                         ylab          = NULL,
@@ -783,12 +783,12 @@ plot_modules.shapley_forest <- function(object,
 }
 
 
-#' Plot Elbow Plot of Absolute SHAP Values for a Shapley Forest Object
+#' Plot Elbow Plot of Absolute SHAP Values for a Bonsai Forest Object
 #'
 #' Ranks stable features by mean |SHAP| importance and displays an elbow
 #' (scree) plot, optionally coloured by module membership.
 #'
-#' @param object        A \code{shapley_forest} object.
+#' @param object        A \code{bonsai_forest} object.
 #' @param main          Plot title. Default \code{"Elbow Plot of Absolute SHAP Values"}.
 #' @param xlab          X-axis label. Default \code{"Features"}.
 #' @param ylab          Y-axis label. Default \code{"Absolute SHAP Values"}.
@@ -806,9 +806,9 @@ plot_elbow <- function(object, ...) {
   UseMethod("plot_elbow")
 }
 
-#' @describeIn plot_elbow Elbow plot for a \code{shapley_forest} object.
+#' @describeIn plot_elbow Elbow plot for a \code{bonsai_forest} object.
 #' @export
-plot_elbow.shapley_forest <- function(object,
+plot_elbow.bonsai_forest <- function(object,
                                       main          = NULL,
                                       xlab          = NULL,
                                       ylab          = NULL,
@@ -880,7 +880,7 @@ plot_elbow.shapley_forest <- function(object,
 }
 
 
-#' Plot Directional (Signed) Feature Importance for a Shapley Forest Object
+#' Plot Directional (Signed) Feature Importance for a Bonsai Forest Object
 #'
 #' Diverging bar chart of signed importance = direction \eqn{\times} mean|SHAP|.
 #' Magnitude is mean|SHAP|; the sign is the global effect direction, taken from
@@ -890,7 +890,7 @@ plot_elbow.shapley_forest <- function(object,
 #' suppress it. Features whose direction is ambiguous (non-monotone:
 #' \eqn{|\rho| < 0.1}) are greyed — a single direction is misleading for those.
 #'
-#' @param object    A \code{shapley_forest} object.
+#' @param object    A \code{bonsai_forest} object.
 #' @param top_n     Show only the \code{top_n} features with the largest
 #'   \eqn{|}signed importance\eqn{|}. Default \code{20L}; use \code{NULL} or
 #'   \code{Inf} to plot every stable feature.
@@ -912,9 +912,9 @@ plot_signed_importance <- function(object, ...) {
 }
 
 #' @describeIn plot_signed_importance Signed-importance plot for a
-#'   \code{shapley_forest} object.
+#'   \code{bonsai_forest} object.
 #' @export
-plot_signed_importance.shapley_forest <- function(object,
+plot_signed_importance.bonsai_forest <- function(object,
                                                   top_n     = 20L,
                                                   labels    = NULL,
                                                   pos_color = "#d6604d",
@@ -924,7 +924,7 @@ plot_signed_importance.shapley_forest <- function(object,
                                                   ...) {
   df <- object$final_SHAP
   if (is.null(df) || !("signed_importance" %in% names(df)) || nrow(df) == 0L)
-    stop("No directional SHAP data found. Refit with sf() (Python backend).")
+    stop("No directional SHAP data found. Refit with bf() (Python backend).")
 
   # Keep the top_n features by |signed importance| (largest effect either way)
   if (!is.null(top_n) && is.finite(top_n) && nrow(df) > top_n)

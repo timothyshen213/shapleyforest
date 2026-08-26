@@ -1,5 +1,5 @@
 ---
-title: "ShapleyForest on Real Data:  World Development Indicators"
+title: "BonsaiForest on Real Data:  World Development Indicators"
 author: "Timothy Shen"
 date: today
 format:
@@ -13,7 +13,7 @@ execute:
   warning: false
   message: false
 vignette: >
-  %\VignetteIndexEntry{Shapley Forest on Real Data: World Development Indicators}
+  %\VignetteIndexEntry{Bonsai Forest on Real Data: World Development Indicators}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
 
 # Introduction
 
-This vignette demonstrates the full Shapley Forest (SF) workflow on the
+This vignette demonstrates the full Bonsai Forest (SF) workflow on the
 **World Development Indicators (WDI)** dataset from the World Bank. Unlike the
 gene-expression panels used in the other vignettes, this is a **non-biological,
 genuinely high-dimensional ($p > n$) tabular dataset** whose features are
@@ -61,9 +61,9 @@ We first load the data (included in the package).
 if (!require("devtools", quietly = TRUE))
     install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyzshen/shapleyforest")
+devtools::install_github("timothyzshen/bonsaiforest")
 
-library(shapleyforest)
+library(bonsaiforest)
 library(WGCNA)
 ```
 
@@ -122,7 +122,7 @@ ggplot(data.frame(r = off_diag), aes(x = r)) +
 # WGCNA Module Detection
 
 Before running SF we perform WGCNA ourselves to build the network structure.
-`sf()` can run WGCNA internally, but doing it manually lets us select the
+`bf()` can run WGCNA internally, but doing it manually lets us select the
 parameters and inspect the modules before handing them off.
 
 ```{r wgcna-load}
@@ -226,7 +226,7 @@ table(net$colors)   # grey = unassigned (treated as independent by SF)
 ```{r wgcna-dendro, eval=FALSE}
 #| fig-width: 12
 #| fig-height: 6
-#| fig-cap: "Indicator dendrogram with module colour bar. Grey = unassigned features — these form the independent pool in SF's split shadow mode."
+#| fig-cap: "Indicator dendrogram with module colour bar. Grey = unassigned features — these form the unassigned pool in SF's split shadow mode."
 
 plotDendroAndColors(
   net$dendrograms[[1]],
@@ -244,7 +244,7 @@ p_dendro <- recordPlot()
 ```{r show-dendro, echo=FALSE}
 #| fig-width: 12
 #| fig-height: 6
-#| fig-cap: "Indicator dendrogram with module colour bar. Grey = unassigned features — these form the independent pool in SF's split shadow mode."
+#| fig-cap: "Indicator dendrogram with module colour bar. Grey = unassigned features — these form the unassigned pool in SF's split shadow mode."
 if (!is.null(sf_cache) && !is.null(sf_cache$p_dendro))
   print(sf_cache$p_dendro)
 ```
@@ -256,17 +256,17 @@ mod_tbl <- as.data.frame(table(Module = net$colors))
 mod_tbl$Independent <- mod_tbl$Module == "grey"
 mod_tbl <- mod_tbl[order(mod_tbl$Freq, decreasing = TRUE), ]
 knitr::kable(mod_tbl, row.names = FALSE,
-             caption = "WGCNA module sizes (grey = independent pool).")
+             caption = "WGCNA module sizes (grey = unassigned pool).")
 ```
 
 ```{r show-module-summary, echo=FALSE}
 if (!is.null(sf_cache) && !is.null(sf_cache$mod_tbl))
   knitr::kable(sf_cache$mod_tbl, row.names = FALSE,
-               caption = "WGCNA module sizes (grey = independent pool).")
+               caption = "WGCNA module sizes (grey = unassigned pool).")
 ```
 
 Grey-labelled indicators are **unassigned by WGCNA** and treated as the
-independent pool. On the rank-transformed network this pool is modest —
+unassigned pool. On the rank-transformed network this pool is modest —
 roughly one indicator in seven — with the remaining ~85% falling into a handful
 of coherent modules (a macro-economic block, a health/sanitation block, a
 demographic block, and so on). It is worth appreciating how much the rank
@@ -278,7 +278,7 @@ discarding a single indicator.
 
 The grey pool that remains is exactly the regime SF's split-shadow machinery is
 designed for: modular indicators are screened *within* their blocks (controlling
-for the redundancy inside each bundle), while the independent pool is judged
+for the redundancy inside each bundle), while the unassigned pool is judged
 against its own permuted shadows.
 
 ### Eigengene-based connectivity (kME)
@@ -363,9 +363,9 @@ best_module  <- module_names[max.col(as.matrix(kME), ties.method = "first")]
 module_membership <- best_module
 names(module_membership) <- colnames(wdi_X)
 
-# Recode grey (no strong eigengene correlation) → "independent" so SF
-# recognises the independent pool
-module_membership[module_membership == "grey"] <- "independent"
+# Recode grey (no strong eigengene correlation) → "unassigned" so SF
+# recognises the unassigned pool
+module_membership[module_membership == "grey"] <- "unassigned"
 
 membership_xtab <- as.data.frame.matrix(
   table(clustering = net$colors, kME_refined = module_membership))
@@ -392,15 +392,15 @@ does **not** leak the outcome.
 We fit SF once on the full dataset using the module membership derived above
 and the **Python backend**, which provides exact TreeSHAP values plus an
 interaction matrix and is much faster than the pure-R fallback. This requires a
-Python environment with `scikit-learn`, `shap`, and `numpy` (see `?sf_setup`);
-configure it once per session with `sf_setup()`.
+Python environment with `scikit-learn`, `shap`, and `numpy` (see `?bf_setup`);
+configure it once per session with `bf_setup()`.
 
-```{r sf-setup, eval=FALSE}
-sf_setup()
+```{r bf-setup, eval=FALSE}
+bf_setup()
 ```
 
 ```{r single-run, eval=FALSE}
-fit <- sf(
+fit <- bf(
   X = wdi_X,
   y = wdi_y,
   module_membership = module_membership,
@@ -458,7 +458,7 @@ if (!is.null(sf_cache)) print(sf_cache$p_stability)
 ```
 
 The dashed horizontal line is the tuned `pi_thr`. The right panel shows the
-independent pool with its own elbow-detected threshold.
+unassigned pool with its own elbow-detected threshold.
 
 ## Feature importance
 
@@ -478,16 +478,16 @@ if (!is.null(sf_cache)) print(sf_cache$p_importance)
 
 ## Design
 
-We compare **six SF variants** formed by two shadow modes × three DML options:
+We compare **six SF variants** formed by two shadow modes × three cfRes options:
 
-| Variant | Shadow mode | DML |
+| Variant | Shadow mode | cfRes |
 |---------|-------------|-----|
 | `split` | split | none |
 | `split_dml` | split | standard |
-| `split_mdml` | split | marginal |
+| `split_mcfres` | split | marginal |
 | `within` | within_module | none |
 | `within_dml` | within_module | standard |
-| `within_mdml` | within_module | marginal |
+| `within_mcfres` | within_module | marginal |
 
 We proceed with the following:
 
@@ -532,12 +532,12 @@ library(caret)
 
 ```{r cv-setup, eval=FALSE}
 VARIANTS <- list(
-  split       = list(shadow_mode = "split",         use_dml_residual = FALSE, dml_scope = "indep"),
-  split_dml   = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "indep"),
-  split_mdml  = list(shadow_mode = "split",         use_dml_residual = TRUE,  dml_scope = "all_modules"),
-  within      = list(shadow_mode = "within_module", use_dml_residual = FALSE, dml_scope = "indep"),
-  within_dml  = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "indep"),
-  within_mdml = list(shadow_mode = "within_module", use_dml_residual = TRUE,  dml_scope = "all_modules")
+  split       = list(shadow_mode = "split",         use_cfres = FALSE, cfres_scope = "unassigned"),
+  split_dml   = list(shadow_mode = "split",         use_cfres = TRUE,  cfres_scope = "unassigned"),
+  split_mcfres  = list(shadow_mode = "split",         use_cfres = TRUE,  cfres_scope = "all_modules"),
+  within      = list(shadow_mode = "within_module", use_cfres = FALSE, cfres_scope = "unassigned"),
+  within_dml  = list(shadow_mode = "within_module", use_cfres = TRUE,  cfres_scope = "unassigned"),
+  within_mcfres = list(shadow_mode = "within_module", use_cfres = TRUE,  cfres_scope = "all_modules")
 )
 
 GRID <- expand.grid(
@@ -578,12 +578,12 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
     n_boots          = 25L,
     min_ntree        = 100L,
     shadow_mode      = variant$shadow_mode,
-    use_dml_residual = variant$use_dml_residual,
-    dml_scope        = variant$dml_scope
+    use_cfres = variant$use_cfres,
+    cfres_scope        = variant$cfres_scope
   )
 
   fit <- tryCatch(
-    sf(X_tr, y_tr,
+    bf(X_tr, y_tr,
        module_membership = module_membership,
        screen_params     = sc,
        select_params     = sl,
@@ -646,7 +646,7 @@ data.frame(
 )
 ```
 
-If both rows return a finite `r2` and `n_stable > 0`, `fit_eval()` and `sf()`
+If both rows return a finite `r2` and `n_stable > 0`, `fit_eval()` and `bf()`
 are wired correctly and it is safe to launch the full `tune` sweep below.
 
 ## Cross-validated tuning and stability
@@ -843,7 +843,7 @@ if (!is.null(sf_cache)) print(sf_cache$p_jaccard)
 We refit **every** variant on the full train+validation set at its locked
 hyperparameters, then score each on the vaulted test set — the single time the
 test data is touched. Each `final_models[[v]]$fit` is a complete
-`shapleyforest` object available for further exploration.
+`bonsaiforest` object available for further exploration.
 
 ```{r final-models, eval=FALSE}
 final_models <- lapply(names(VARIANTS), function(vname) {
@@ -860,12 +860,12 @@ final_models <- lapply(names(VARIANTS), function(vname) {
     n_boots          = 25L,
     min_ntree        = 500L,
     shadow_mode      = variant$shadow_mode,
-    use_dml_residual = variant$use_dml_residual,
-    dml_scope        = variant$dml_scope
+    use_cfres = variant$use_cfres,
+    cfres_scope        = variant$cfres_scope
   )
 
   set.seed(42)
-  fit <- sf(X_tv, y_tv,
+  fit <- bf(X_tv, y_tv,
             module_membership = module_membership,
             screen_params     = sc,
             select_params     = sl,

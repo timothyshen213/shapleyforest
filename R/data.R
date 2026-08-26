@@ -84,7 +84,7 @@ NULL
 #' 181 countries in 2020.  Unlike the other bundled datasets — which are all
 #' gene-expression panels — this is a non-biological, genuinely
 #' high-dimensional (p > n), and highly-correlated tabular dataset.  It is
-#' included to demonstrate Shapley Forest on data whose features (GDP per
+#' included to demonstrate Bonsai Forest on data whose features (GDP per
 #' capita, literacy rate, CO2 emissions, urban population share, ...) are
 #' intuitive to a general audience, while still posing the same challenge as
 #' genomic data: many more correlated, partially redundant measurements than
