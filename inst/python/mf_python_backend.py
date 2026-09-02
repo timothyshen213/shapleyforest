@@ -1,7 +1,7 @@
 """
-bf_python_backend_v18.py
+mf_python_backend_v18.py
 ------------------------
-BonsaiForest v18 — stable union + single-shot joint TreeSHAP.
+MossyForest v18 — stable union + single-shot joint TreeSHAP.
 
 Replaces pass-2 SHAP RFE (iterative elimination) with a single RF fit on
 the entire stable union, then TreeSHAP on all features simultaneously.
@@ -485,7 +485,7 @@ def _boruta_shadow_stability(X_pool, feat_names, y,
     n_valid = 0
 
     # Per-bootstrap deterministic seeds (order-independent). Mirrors the
-    # bonsaiforest_py package so the two implementations stay matched.
+    # mossyforest_py package so the two implementations stay matched.
     boot_seeds = np.random.SeedSequence(int(seed)).generate_state(int(n_boots))
     _prev_freqs = [None]   # early-stopping state
 

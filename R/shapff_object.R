@@ -1,8 +1,8 @@
-#' Bonsai Forest Object
+#' Mossy Forest Object
 #'
-#' Constructor for the \code{bonsai_forest} return type. Users do not call
-#' this directly; it is called internally by \code{\link{bf}} and
-#' \code{\link{wbf}}.
+#' Constructor for the \code{mossy_forest} return type. Users do not call
+#' this directly; it is called internally by \code{\link{mf}} and
+#' \code{\link{wmf}}.
 #'
 #' @param final_rf        Final \code{ranger} object fitted on the stable
 #'                        feature set.
@@ -30,9 +30,9 @@
 #'                        \code{selected}, \code{threshold}, \code{elbow_rank}.
 #'                        \code{NULL} if unavailable.
 #'
-#' @return An object of class \code{bonsai_forest}.
+#' @return An object of class \code{mossy_forest}.
 #' @keywords internal
-bonsai_forest <- function(final_rf, final_X, module_membership,
+mossy_forest <- function(final_rf, final_X, module_membership,
                             WGCNA_object    = NULL,
                             survivor_list,
                             selection_list,
@@ -56,23 +56,23 @@ bonsai_forest <- function(final_rf, final_X, module_membership,
     stability_freq   = stability_freq,
     stability_data   = stability_data
   )
-  class(out) <- "bonsai_forest"
+  class(out) <- "mossy_forest"
   out
 }
 
 
-#' Print a Bonsai Forest Object
+#' Print a Mossy Forest Object
 #'
 #' Prints the stable feature set with mean |SHAP| importance scores and
 #' shadow-stability frequencies.
 #'
-#' @param x   A \code{bonsai_forest} object.
+#' @param x   A \code{mossy_forest} object.
 #' @param ... Ignored.
 #'
 #' @return Invisibly returns \code{x}.
 #' @export
-print.bonsai_forest <- function(x, ...) {
-  cat("--- Bonsai Forest ---\n")
+print.mossy_forest <- function(x, ...) {
+  cat("--- Mossy Forest ---\n")
   cat(sprintf("Stable features selected: %d\n\n", nrow(x$final_SHAP)))
   print(x$final_SHAP)
 
@@ -83,18 +83,18 @@ print.bonsai_forest <- function(x, ...) {
 }
 
 
-#' Predict from a Bonsai Forest Object
+#' Predict from a Mossy Forest Object
 #'
 #' Generates predictions from the final random forest fitted on the stable
 #' feature set.
 #'
-#' @param object   A \code{bonsai_forest} object.
+#' @param object   A \code{mossy_forest} object.
 #' @param new_data A matrix or data frame of new observations. Column names
 #'                 must match the training features.
 #' @param ...      Additional arguments passed to \code{ranger:::predict}.
 #'
 #' @return A \code{ranger} prediction object.
 #' @export
-predict.bonsai_forest <- function(object, new_data, ...) {
+predict.mossy_forest <- function(object, new_data, ...) {
   predict(object$final_rf, data = new_data, ...)
 }

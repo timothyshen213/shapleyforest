@@ -41,8 +41,8 @@ An object of class \code{screen_control}.
 }
 \description{
 Creates a parameter object controlling the screening (recursive feature
-elimination) step of \code{\link{bf}}.
+elimination) step of \code{\link{mf}}.
 }
 \seealso{
-\code{\link{select_control}}, \code{\link{bf}}
+\code{\link{select_control}}, \code{\link{mf}}
 }

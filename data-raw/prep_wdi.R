@@ -4,7 +4,7 @@
 # Requires: install.packages(c("WDI", "data.table"))
 #
 # A non-biological, genuinely high-dimensional (p > n), highly-correlated
-# tabular dataset — useful for demonstrating Bonsai Forest on data whose
+# tabular dataset — useful for demonstrating Mossy Forest on data whose
 # features (GDP per capita, literacy, CO2 emissions, ...) are intuitive to a
 # general audience while posing the same challenge as genomic panels.
 #

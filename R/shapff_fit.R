@@ -1,6 +1,6 @@
-#' Bonsai Forest Feature Selection
+#' Mossy Forest Feature Selection
 #'
-#' Runs the Bonsai Forest algorithm: module-stratified recursive feature
+#' Runs the Mossy Forest algorithm: module-stratified recursive feature
 #' elimination (screening), followed by shadow-stability selection, and a
 #' single-shot SHAP importance pass on the stable feature set.
 #'
@@ -62,7 +62,7 @@
 #'       \code{plot_potential_interactions()}.}
 #'   }
 #'
-#' @return An object of class \code{\link{bonsai_forest}}.
+#' @return An object of class \code{\link{mossy_forest}}.
 #'
 #' @references
 #' Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C.,
@@ -78,20 +78,20 @@
 #'
 #' @examples
 #' \dontrun{
-#'   bf_setup(condaenv = "sfenv")
+#'   mf_setup(condaenv = "sfenv")
 #'
 #'   data(iris)
 #'   X   <- iris[, 1:4]
 #'   y   <- iris$Species
 #'   mem <- setNames(c("A","A","B","B"), colnames(X))
 #'
-#'   res <- bf(X, y, module_membership = mem,
+#'   res <- mf(X, y, module_membership = mem,
 #'             screen_params = screen_control(min_ntree = 100),
 #'             select_params = select_control(n_boots = 25))
 #'   print(res)
 #'   plot_importance(res)
 #' }
-bf <- function(X, y,
+mf <- function(X, y,
                module_membership,
                screen_params   = screen_control(),
                select_params   = select_control(),
@@ -141,7 +141,7 @@ bf <- function(X, y,
   # R backend — pure ranger, no Python required
   # ══════════════════════════════════════════════════════════════════════════════
   if (backend == "R") {
-    return(.bf_R_backend(
+    return(.mf_R_backend(
       X = X, y = y,
       module_membership        = module_membership,
       module_membership_screen = module_membership_screen,
@@ -171,7 +171,7 @@ bf <- function(X, y,
   if (verbose >= 1L) cat("Screening ...\n")
   t0 <- proc.time()
 
-  screen_py <- .bf_py$run_screen_rfe(
+  screen_py <- .mf_py$run_screen_rfe(
     X_mat              = X_mat,
     y                  = y_py,
     feature_names      = feature_names,
@@ -256,7 +256,7 @@ bf <- function(X, y,
     mean(as.numeric(df[, 2L]), na.rm = TRUE)
   }, numeric(1L))
 
-  select_py <- .bf_py$run_select_rfe(
+  select_py <- .mf_py$run_select_rfe(
     X_surv_mat              = X_surv_mat,
     y                       = y_py,
     feature_names_surv      = as.list(colnames(X_surv)),
@@ -480,7 +480,7 @@ bf <- function(X, y,
   if (verbose >= 1L) cat("Done.\n")
   options(warn = 1)
 
-  bonsai_forest(
+  mossy_forest(
     final_rf          = final_rf,
     final_X           = final_X,
     module_membership = final_module_membership,
@@ -497,15 +497,15 @@ bf <- function(X, y,
 }
 
 
-#' Bonsai Forest with WGCNA Module Detection
+#' Mossy Forest with WGCNA Module Detection
 #'
 #' Runs a Weighted Gene Co-expression Network Analysis (WGCNA) to derive
-#' module membership, then passes the result to \code{\link{bf}}.
+#' module membership, then passes the result to \code{\link{mf}}.
 #'
-#' @inheritParams bf
+#' @inheritParams mf
 #' @param WGCNA_params WGCNA parameters. See \code{\link{WGCNA_control}}.
 #'
-#' @return An object of class \code{\link{bonsai_forest}} with an additional
+#' @return An object of class \code{\link{mossy_forest}} with an additional
 #'   \code{$WGCNA_object} slot containing the raw WGCNA output.
 #'
 #' @export
@@ -515,7 +515,7 @@ bf <- function(X, y,
 #' Zhang, B., & Horvath, S. (2005). A general framework for weighted gene
 #'   co-expression network analysis. \emph{Statistical Applications in Genetics
 #'   and Molecular Biology}, 4(1), Article 17.
-wbf <- function(X, y,
+wmf <- function(X, y,
                 WGCNA_params  = WGCNA_control(p = 6),
                 screen_params = screen_control(),
                 select_params = select_control(),
@@ -530,7 +530,7 @@ wbf <- function(X, y,
                 r_shap        = "permutation") {
 
   if (!requireNamespace("WGCNA", quietly = TRUE))
-    stop("Package 'WGCNA' is required for wbf(). Install it first.", call. = FALSE)
+    stop("Package 'WGCNA' is required for wmf(). Install it first.", call. = FALSE)
   # WGCNA's blockwiseModules calls cor() with extra args (weights.x, cosine, ...)
   # that only WGCNA::cor understands.  When WGCNA is only namespace-loaded
   # (not library()-attached) the lookup resolves to stats::cor and errors.
@@ -561,7 +561,7 @@ wbf <- function(X, y,
   }
   module_membership <- bwise$colors
 
-  out <- bf(
+  out <- mf(
     X = X, y = y,
     module_membership = module_membership,
     screen_params     = screen_params,

@@ -113,8 +113,8 @@ An object of class \code{select_control}.
 }
 \description{
 Creates a parameter object controlling the shadow-stability selection step
-of \code{\link{bf}}.
+of \code{\link{mf}}.
 }
 \seealso{
-\code{\link{screen_control}}, \code{\link{bf}}
+\code{\link{screen_control}}, \code{\link{mf}}
 }

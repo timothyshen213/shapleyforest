@@ -2,12 +2,12 @@
 % Please edit documentation in R/detect_interaction.R
 \name{detect_interaction}
 \alias{detect_interaction}
-\title{Detect Pairwise Interactions from a Bonsai Forest Object}
+\title{Detect Pairwise Interactions from a Mossy Forest Object}
 \usage{
 detect_interaction(object, thresh = 0, all = FALSE, verbose = TRUE, ...)
 }
 \arguments{
-\item{object}{A \code{bonsai_forest} object.}
+\item{object}{A \code{mossy_forest} object.}
 
 \item{thresh}{Interaction-strength threshold.  Only pairs whose mean
 \eqn{|\phi_{jk}|} exceeds \code{thresh} are returned as

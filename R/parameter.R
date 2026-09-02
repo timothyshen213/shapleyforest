@@ -1,7 +1,7 @@
 #' Screening Step Parameters
 #'
 #' Creates a parameter object controlling the screening (recursive feature
-#' elimination) step of \code{\link{bf}}.
+#' elimination) step of \code{\link{mf}}.
 #'
 #' @param drop_fraction  Fraction of features dropped at each RFE iteration.
 #'                       Default \code{0.25}.
@@ -22,7 +22,7 @@
 #'
 #' @return An object of class \code{screen_control}.
 #' @export
-#' @seealso \code{\link{select_control}}, \code{\link{bf}}
+#' @seealso \code{\link{select_control}}, \code{\link{mf}}
 screen_control <- function(drop_fraction = 0.25,
                             keep_fraction = 0.50,
                             mtry_factor   = 1,
@@ -46,7 +46,7 @@ screen_control <- function(drop_fraction = 0.25,
 #' Selection Step Parameters
 #'
 #' Creates a parameter object controlling the shadow-stability selection step
-#' of \code{\link{bf}}.
+#' of \code{\link{mf}}.
 #'
 #' @param drop_fraction      Fraction of features dropped per RFE iteration
 #'                           during survivor-pool pre-reduction. Default
@@ -112,7 +112,7 @@ screen_control <- function(drop_fraction = 0.25,
 #'
 #' @return An object of class \code{select_control}.
 #' @export
-#' @seealso \code{\link{screen_control}}, \code{\link{bf}}
+#' @seealso \code{\link{screen_control}}, \code{\link{mf}}
 select_control <- function(drop_fraction    = 0.10,
                             mtry_factor      = 1,
                             mtry_rule        = "auto",
@@ -170,7 +170,7 @@ select_control <- function(drop_fraction    = 0.10,
 #' WGCNA Parameter Organization
 #'
 #' Creates a parameter object for the WGCNA co-expression network step used
-#' by \code{\link{wbf}}.
+#' by \code{\link{wmf}}.
 #'
 #' @param power        Soft-thresholding power passed to
 #'                     \code{\link[WGCNA]{blockwiseModules}}. Default \code{6}.

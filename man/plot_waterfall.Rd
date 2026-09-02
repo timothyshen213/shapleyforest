@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_waterfall}
 \alias{plot_waterfall}
-\alias{plot_waterfall.bonsai_forest}
-\title{Plot Waterfall for Specific Observations in a Bonsai Forest Object}
+\alias{plot_waterfall.mossy_forest}
+\title{Plot Waterfall for Specific Observations in a Mossy Forest Object}
 \usage{
 plot_waterfall(object, ...)
 
-\method{plot_waterfall}{bonsai_forest}(
+\method{plot_waterfall}{mossy_forest}(
   object,
   row_id,
   row_name = NULL,
@@ -21,7 +21,7 @@ plot_waterfall(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{bonsai_forest} object.}
+\item{object}{A \code{mossy_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -54,6 +54,6 @@ built via \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_waterfall(bonsai_forest)}: Waterfall plot for a \code{bonsai_forest} object.
+\item \code{plot_waterfall(mossy_forest)}: Waterfall plot for a \code{mossy_forest} object.
 
 }}

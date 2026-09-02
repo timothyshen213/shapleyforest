@@ -1,8 +1,8 @@
-# `bonsaiforest`: Bonsai Forest
+# `mossyforest`: Mossy Forest
 
 Network-aware stable feature selection via Shapley values and random forests.
 
-**UNDER DEVELOPMENT R Package.** `bonsaiforest` selects a small, stable set of
+**UNDER DEVELOPMENT R Package.** `mossyforest` selects a small, stable set of
 features from high-dimensional, correlated data by combining:
 
 1. **Module-stratified screening** — recursive feature elimination (RFE) within
@@ -12,7 +12,7 @@ features from high-dimensional, correlated data by combining:
 3. **A single TreeSHAP pass** on the stable set for importance, confidence
    intervals, and a pairwise interaction matrix.
 
-A [Python implementation](https://github.com/timothyzshen/bonsaiforest) mirrors
+A [Python implementation](https://github.com/timothyzshen/mossyforest) mirrors
 this package and is bit-exact with the `backend = "python"` path (see
 [Parity](#parity-with-the-python-package)); prefer it for very large data sets.
 
@@ -24,17 +24,17 @@ this package and is bit-exact with the `backend = "python"` path (see
 if (!require("devtools", quietly = TRUE))
        install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyzshen/bonsaiforest")
+devtools::install_github("timothyzshen/mossyforest")
 ```
 
 The default `backend = "python"` uses `reticulate` and needs a Python
-environment with `scikit-learn`, `shap`, and `numpy`. Run `bf_setup()` once to
+environment with `scikit-learn`, `shap`, and `numpy`. Run `mf_setup()` once to
 provision it. The `backend = "R"` path is pure R (`ranger`) and needs no Python;
 `r_shap = "treeshap"` or `"fastshap"` additionally needs the matching R package.
 
 ### A note on downloading `WGCNA`
 
-`WGCNA` (used by `wbf()` for automatic module detection) installs from
+`WGCNA` (used by `wmf()` for automatic module detection) installs from
 Bioconductor:
 
 ```r
@@ -50,10 +50,10 @@ install.packages("WGCNA")
 ## Quick start
 
 ```r
-library(bonsaiforest)
+library(mossyforest)
 
 # X: data.frame of samples x features; y: numeric (regression) or factor (classification)
-res <- bf(
+res <- mf(
   X, y,
   module_membership = c(gene1 = "M1", gene2 = "M1", gene3 = "M2", ...),
   screen_params     = screen_control(),   # Phase 1 defaults
@@ -70,7 +70,7 @@ detect_interaction(res, thresh = 0.01)    # ranked pairwise TreeSHAP interaction
 ### Automatic WGCNA module detection
 
 ```r
-res <- wbf(X, y, WGCNA_params = WGCNA_control(power = 6, min_features = 20))
+res <- wmf(X, y, WGCNA_params = WGCNA_control(power = 6, min_features = 20))
 res$WGCNA_object      # raw module labels
 ```
 
@@ -130,7 +130,7 @@ engine).
 | `early_stop_boots` | `FALSE` | stop bootstraps early once frequencies converge |
 | `early_stop_tol` / `early_stop_check_every` | 0.01 / 10 | early-stop controls |
 
-### `bf()` execution
+### `mf()` execution
 | param | default | meaning |
 |---|---|---|
 | `backend` | `"python"` | `"python"` or `"R"` (see [Backends](#backends)) |
@@ -142,7 +142,7 @@ engine).
 
 ---
 
-## Result object (class `bonsai_forest`)
+## Result object (class `mossy_forest`)
 
 | element | description |
 |---|---|
@@ -172,7 +172,7 @@ plot_modules(res); plot_elbow(res)
 
 ## Parity with the Python package
 
-The `backend = "python"` path and the Python `bonsaiforest` package are a
+The `backend = "python"` path and the Python `mossyforest` package are a
 bit-exact match on identical data, seed, and stack: screening survivors and the
 selected set are identical, stability frequencies agree to 0.0000, and the
 signed SHAP matrix matches (max \|Δ\| = 0.000). Re-verify with

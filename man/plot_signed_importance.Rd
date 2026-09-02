@@ -2,24 +2,27 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_signed_importance}
 \alias{plot_signed_importance}
-\alias{plot_signed_importance.bonsai_forest}
-\title{Plot Directional (Signed) Feature Importance for a Bonsai Forest Object}
+\alias{plot_signed_importance.mossy_forest}
+\title{Plot Directional (Signed) Feature Importance for a Mossy Forest Object}
 \usage{
 plot_signed_importance(object, ...)
 
-\method{plot_signed_importance}{bonsai_forest}(
+\method{plot_signed_importance}{mossy_forest}(
   object,
   top_n = 20L,
   labels = NULL,
-  pos_color = "#d6604d",
-  neg_color = "#4393c3",
+  pos_color = "#4393c3",
+  neg_color = "#d6604d",
   amb_color = "#bbbbbb",
+  pos_label = "increase",
+  neg_label = "decrease",
+  amb_label = "ambiguous",
   main = "Directional feature importance",
   ...
 )
 }
 \arguments{
-\item{object}{A \code{bonsai_forest} object.}
+\item{object}{A \code{mossy_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -32,11 +35,20 @@ plot_signed_importance(object, ...)
 a gene-symbol or indicator-name lookup. Names not found are left unchanged.
 Default \code{NULL} (show the raw feature names).}
 
-\item{pos_color}{Bar colour for positive direction. Default \code{"#d6604d"}.}
+\item{pos_color}{Bar colour for positive direction. Default \code{"#4393c3"}.}
 
-\item{neg_color}{Bar colour for negative direction. Default \code{"#4393c3"}.}
+\item{neg_color}{Bar colour for negative direction. Default \code{"#d6604d"}.}
 
 \item{amb_color}{Bar colour for ambiguous features. Default \code{"#bbbbbb"}.}
+
+\item{pos_label}{Legend text for the positive-direction group. Default
+\code{"increase"}.}
+
+\item{neg_label}{Legend text for the negative-direction group. Default
+\code{"decrease"}.}
+
+\item{amb_label}{Legend text for the ambiguous group. Default
+\code{"ambiguous"}.}
 
 \item{main}{Plot title. Default \code{"Directional feature importance"}.}
 }
@@ -48,13 +60,13 @@ Diverging bar chart of signed importance = direction \eqn{\times} mean|SHAP|.
 Magnitude is mean|SHAP|; the sign is the global effect direction, taken from
 the Spearman correlation between each feature's value and its SHAP value
 (\code{mean(signed SHAP)} \eqn{\approx 0} because contributions cancel, so it
-is unusable for direction). Bars to the right promote the outcome, to the left
-suppress it. Features whose direction is ambiguous (non-monotone:
+is unusable for direction). Bars to the right increase the outcome, to the
+left decrease it. Features whose direction is ambiguous (non-monotone:
 \eqn{|\rho| < 0.1}) are greyed — a single direction is misleading for those.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_signed_importance(bonsai_forest)}: Signed-importance plot for a
-\code{bonsai_forest} object.
+\item \code{plot_signed_importance(mossy_forest)}: Signed-importance plot for a
+\code{mossy_forest} object.
 
 }}

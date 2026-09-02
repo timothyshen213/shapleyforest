@@ -1,4 +1,4 @@
 library(testthat)
-library(bonsaiforest)
+library(mossyforest)
 
-test_check("bonsaiforest")
+test_check("mossyforest")

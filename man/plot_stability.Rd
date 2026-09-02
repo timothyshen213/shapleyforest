@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_stability}
 \alias{plot_stability}
-\alias{plot_stability.bonsai_forest}
-\title{Plot Shadow-Stability Frequencies for a Bonsai Forest Object}
+\alias{plot_stability.mossy_forest}
+\title{Plot Shadow-Stability Frequencies for a Mossy Forest Object}
 \usage{
 plot_stability(object, ...)
 
-\method{plot_stability}{bonsai_forest}(
+\method{plot_stability}{mossy_forest}(
   object,
   fill = "#3e568a",
   main = "Shadow-Stability Frequencies",
@@ -15,7 +15,7 @@ plot_stability(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{bonsai_forest} object.}
+\item{object}{A \code{mossy_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -32,6 +32,6 @@ feature as a horizontal bar chart. Features are sorted by frequency.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_stability(bonsai_forest)}: Stability frequency plot for a \code{bonsai_forest} object.
+\item \code{plot_stability(mossy_forest)}: Stability frequency plot for a \code{mossy_forest} object.
 
 }}

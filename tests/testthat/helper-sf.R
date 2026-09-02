@@ -1,4 +1,4 @@
-# Shared fixtures and skip helpers for the bonsaiforest test suite.
+# Shared fixtures and skip helpers for the mossyforest test suite.
 
 # A small, fast, module-structured data set with known true signals:
 #   module A  : A1..A4  correlated with latent z1
@@ -41,7 +41,7 @@ fast_select <- function(...) {
 
 # Run a pure-R backend fit with the fast controls.
 fit_R <- function(d, r_shap = "permutation", ...) {
-  bf(d$X, d$y_reg, module_membership = d$mm,
+  mf(d$X, d$y_reg, module_membership = d$mm,
      screen_params = fast_screen(), select_params = fast_select(),
      final_ntree = 60L, num_processors = 1L, verbose = 0L, seed = 3L,
      backend = "R", r_shap = r_shap, ...)

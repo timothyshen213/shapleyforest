@@ -1,8 +1,8 @@
-# Pure-R backend for bonsaiforest — no Python / reticulate required.
+# Pure-R backend for mossyforest — no Python / reticulate required.
 #
 # Screening RFE and shadow-stability selection both use ranger + permutation
 # importance.  For the final importance step the user chooses one of three
-# methods via the `r_shap` argument passed down from bf():
+# methods via the `r_shap` argument passed down from mf():
 #
 #   "permutation" — ranger permutation VIM (scalar per feature, no extra pkg)
 #   "fastshap"    — approximate Shapley values via the fastshap package
@@ -14,9 +14,9 @@
 # Internal helpers — not exported.
 
 
-# ── Top-level orchestrator called by bf() ────────────────────────────────────
+# ── Top-level orchestrator called by mf() ────────────────────────────────────
 
-.bf_R_backend <- function(X, y,
+.mf_R_backend <- function(X, y,
                            module_membership,
                            module_membership_screen,
                            module_list_screen,
@@ -41,7 +41,7 @@
   if (verbose >= 1L) cat(sprintf("Screening [R / %s] ...\n", r_shap))
   t0 <- proc.time()
 
-  screen_out <- .bf_R_screen(
+  screen_out <- .mf_R_screen(
     X                 = X,
     y                 = y,
     module_membership = module_membership_screen,
@@ -87,7 +87,7 @@
   if (verbose >= 1L) cat("Selecting stable features [R] ...\n")
   t0 <- proc.time()
 
-  sel_out <- .bf_R_select(
+  sel_out <- .mf_R_select(
     X_surv                 = X_surv,
     y                      = y,
     survivor_list          = survivor_list,
@@ -168,11 +168,11 @@
   # ── Compute SHAP values (method depends on r_shap) ───────────────────────────
   shap_result <- if (!is.null(final_rf) && n_stable > 0L) {
     switch(r_shap,
-      permutation = .bf_R_shap_permutation(final_rf, final_X, stable_features,
+      permutation = .mf_R_shap_permutation(final_rf, final_X, stable_features,
                                             verbose >= 1L),
-      fastshap    = .bf_R_shap_fastshap(final_rf, final_X, y, stable_features,
+      fastshap    = .mf_R_shap_fastshap(final_rf, final_X, y, stable_features,
                                          seed, verbose >= 1L),
-      treeshap    = .bf_R_shap_treeshap(final_rf, final_X, stable_features,
+      treeshap    = .mf_R_shap_treeshap(final_rf, final_X, stable_features,
                                          verbose >= 1L)
     )
   } else {
@@ -245,6 +245,38 @@
       mean_signed[stable_features] + 1.96 * se_signed[stable_features], 4L)
     shap_final_list$stability_freq   <- round(
       stability_freq_vec[stable_features], 4L)
+
+    # ── global effect direction: Spearman(feature value, SHAP value) ──────────
+    # Only meaningful with a real per-observation SHAP matrix (fastshap /
+    # treeshap); permutation VIM is scalar-only, so there is nothing to
+    # correlate against and direction is skipped for r_shap = "permutation".
+    # Mean signed SHAP ~ 0 (contributions cancel); direction lives in how a
+    # feature's SHAP tracks its value. Spearman is rank-based (captures
+    # monotone direction without assuming linearity). |rho| < 0.1 flags
+    # non-monotone / ambiguous direction (a single sign is misleading).
+    #
+    # Classification caveat: for treeshap this classification path currently
+    # errors upstream (treeshap::ranger.unify() does not support ranger
+    # probability forests), so direction is only reachable for regression
+    # today. For fastshap, the SHAP matrix explains the probability of the
+    # LOWER-sorted factor level (ranger's predictions column 1) — the
+    # opposite convention from the Python backend, which explains the
+    # HIGHER-sorted class. Direction sign is therefore not comparable
+    # between backends for fastshap + classification.
+    if (r_shap %in% c("fastshap", "treeshap")) {
+      dir_corr <- vapply(stable_features, function(feat) {
+        xj <- as.numeric(final_X[[feat]]); sj <- shap_matrix[, feat]
+        if (anyNA(sj) || stats::sd(xj) == 0 || stats::sd(sj) == 0) return(0)
+        cc <- suppressWarnings(stats::cor(xj, sj, method = "spearman"))
+        if (is.na(cc)) 0 else cc
+      }, numeric(1L))
+      direction <- sign(dir_corr)
+      shap_final_list$direction           <- as.integer(direction[stable_features])
+      shap_final_list$dir_corr            <- round(dir_corr[stable_features], 4L)
+      shap_final_list$signed_importance   <- round(
+        direction[stable_features] * mean_abs[stable_features], 4L)
+      shap_final_list$direction_ambiguous <- abs(dir_corr[stable_features]) < 0.1
+    }
   }
 
   runtime$Final_RF <- (proc.time() - t0)["elapsed"]
@@ -269,7 +301,7 @@
     names(survivor_list)
   )
 
-  bonsai_forest(
+  mossy_forest(
     final_rf          = final_rf,
     final_X           = final_X,
     module_membership = final_module_membership,
@@ -292,7 +324,7 @@
 # simply not available, while the variable_importance column in the output
 # data frame carries the permutation VIM.
 
-.bf_R_shap_permutation <- function(final_rf, final_X, stable_features, verbose) {
+.mf_R_shap_permutation <- function(final_rf, final_X, stable_features, verbose) {
   if (verbose) cat("  Using permutation VIM (no per-observation SHAP values).\n")
   list(
     shap_matrix        = matrix(NA_real_, nrow = nrow(final_X),
@@ -305,7 +337,7 @@
 
 # ── SHAP method 2: fastshap approximate SHAP ─────────────────────────────────
 
-.bf_R_shap_fastshap <- function(final_rf, final_X, y, stable_features,
+.mf_R_shap_fastshap <- function(final_rf, final_X, y, stable_features,
                                  seed, verbose) {
   if (!requireNamespace("fastshap", quietly = TRUE))
     stop("Install the 'fastshap' package to use r_shap = 'fastshap'.",
@@ -354,7 +386,7 @@
 
 # ── SHAP method 3: treeshap exact TreeSHAP + interaction matrix ──────────────
 
-.bf_R_shap_treeshap <- function(final_rf, final_X, stable_features, verbose) {
+.mf_R_shap_treeshap <- function(final_rf, final_X, stable_features, verbose) {
   if (!requireNamespace("treeshap", quietly = TRUE))
     stop("Install the 'treeshap' package to use r_shap = 'treeshap'.",
          call. = FALSE)
@@ -495,7 +527,7 @@
 }
 
 
-.bf_R_screen <- function(X, y, module_membership, screen_params,
+.mf_R_screen <- function(X, y, module_membership, screen_params,
                           nodesize, num_processors, seed, verbose,
                           r_shap = "permutation") {
   sc             <- screen_params
@@ -622,7 +654,7 @@
 
 # ── Phase 2: Shadow-stability selection (R backend) ──────────────────────────
 
-.bf_R_select <- function(X_surv, y, survivor_list, select_params,
+.mf_R_select <- function(X_surv, y, survivor_list, select_params,
                           module_membership_surv,
                           nodesize, num_processors, seed, verbose,
                           r_shap = "permutation") {

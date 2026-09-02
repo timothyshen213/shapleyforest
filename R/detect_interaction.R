@@ -1,4 +1,4 @@
-#' Detect Pairwise Interactions from a Bonsai Forest Object
+#' Detect Pairwise Interactions from a Mossy Forest Object
 #'
 #' Returns exact TreeSHAP pairwise interaction strengths for all stable
 #' features.  Interaction values are computed via
@@ -13,7 +13,7 @@
 #' entries are main effects; off-diagonal entries are pairwise interactions.
 #' The matrix is symmetric: \eqn{M_{jk} = M_{kj}}.
 #'
-#' @param object  A \code{bonsai_forest} object.
+#' @param object  A \code{mossy_forest} object.
 #' @param thresh  Interaction-strength threshold.  Only pairs whose mean
 #'                \eqn{|\phi_{jk}|} exceeds \code{thresh} are returned as
 #'                significant.  Set to \code{0} to return all pairs.
@@ -40,8 +40,8 @@ detect_interaction <- function(object, thresh = 0, all = FALSE,
   int_mat <- object$shap_obj$interaction_matrix
   if (is.null(int_mat) || !is.matrix(int_mat))
     stop(paste0(
-      "No interaction matrix found in this bonsai_forest object.\n",
-      "  Refit with bf() — interaction values are computed automatically ",
+      "No interaction matrix found in this mossy_forest object.\n",
+      "  Refit with mf() — interaction values are computed automatically ",
       "during the final SHAP pass."
     ), call. = FALSE)
 

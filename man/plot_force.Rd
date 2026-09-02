@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_force}
 \alias{plot_force}
-\alias{plot_force.bonsai_forest}
-\title{Plot SHAP Force Plot for Specific Observations in a Bonsai Forest Object}
+\alias{plot_force.mossy_forest}
+\title{Plot SHAP Force Plot for Specific Observations in a Mossy Forest Object}
 \usage{
 plot_force(object, ...)
 
-\method{plot_force}{bonsai_forest}(
+\method{plot_force}{mossy_forest}(
   object,
   row_id,
   row_name = NULL,
@@ -20,7 +20,7 @@ plot_force(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{bonsai_forest} object.}
+\item{object}{A \code{mossy_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -49,6 +49,6 @@ via \link[shapviz]{shapviz}.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_force(bonsai_forest)}: Force plot for a \code{bonsai_forest} object.
+\item \code{plot_force(mossy_forest)}: Force plot for a \code{mossy_forest} object.
 
 }}

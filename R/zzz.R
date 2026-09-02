@@ -1,17 +1,17 @@
 # ── Internal Python environment ───────────────────────────────────────────────
-.bf_py <- new.env(parent = emptyenv())
-.bf_py$loaded <- FALSE
+.mf_py <- new.env(parent = emptyenv())
+.mf_py$loaded <- FALSE
 
 .onAttach <- function(libname, pkgname) {
   packageStartupMessage(
-    "Bonsai Forest loaded. Run bf_setup() to configure the Python environment."
+    "Mossy Forest loaded. Run mf_setup() to configure the Python environment."
   )
 }
 
-#' Configure the Python environment for Bonsai Forest
+#' Configure the Python environment for Mossy Forest
 #'
-#' Tells Bonsai Forest which Python installation to use for its backend.
-#' Call this once at the start of each R session before using \code{\link{bf}}.
+#' Tells Mossy Forest which Python installation to use for its backend.
+#' Call this once at the start of each R session before using \code{\link{mf}}.
 #'
 #' @param python     Path to a Python binary. Passed to
 #'                   \code{reticulate::use_python()}.
@@ -33,10 +33,10 @@
 #' @export
 #' @examples
 #' \dontrun{
-#'   bf_setup(condaenv = "sfenv")
-#'   bf_setup(python = "/usr/local/bin/python3")
+#'   mf_setup(condaenv = "sfenv")
+#'   mf_setup(python = "/usr/local/bin/python3")
 #' }
-bf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
+mf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
   if (!requireNamespace("reticulate", quietly = TRUE))
     stop("Package 'reticulate' is required. Install with: install.packages('reticulate')",
          call. = FALSE)
@@ -52,7 +52,7 @@ bf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
   invisible(NULL)
 }
 
-# Internal: load the bundled Python backend into .bf_py
+# Internal: load the bundled Python backend into .mf_py
 .load_python_backend <- function() {
   if (!requireNamespace("reticulate", quietly = TRUE))
     stop("Package 'reticulate' is required. Install with: install.packages('reticulate')",
@@ -63,19 +63,19 @@ bf_setup <- function(python = NULL, condaenv = NULL, virtualenv = NULL) {
   if (!nzchar(Sys.getenv("PYTHONIOENCODING")))
     Sys.setenv(PYTHONIOENCODING = "utf-8")
 
-  py_file <- system.file("python", "bf_python_backend.py",
-                          package = "bonsaiforest")
+  py_file <- system.file("python", "mf_python_backend.py",
+                          package = "mossyforest")
   if (!nzchar(py_file) || !file.exists(py_file))
-    stop("Bonsai Forest Python backend not found in package installation.",
+    stop("Mossy Forest Python backend not found in package installation.",
          call. = FALSE)
 
-  reticulate::source_python(py_file, envir = .bf_py)
-  .bf_py$loaded <- TRUE
+  reticulate::source_python(py_file, envir = .mf_py)
+  .mf_py$loaded <- TRUE
   invisible(NULL)
 }
 
 # Internal: ensure Python backend is ready, loading lazily on first call
 .ensure_python <- function() {
-  if (isTRUE(.bf_py$loaded)) return(invisible(NULL))
+  if (isTRUE(.mf_py$loaded)) return(invisible(NULL))
   .load_python_backend()
 }

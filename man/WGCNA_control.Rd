@@ -21,5 +21,5 @@ An object of class \code{WGCNA_control}.
 }
 \description{
 Creates a parameter object for the WGCNA co-expression network step used
-by \code{\link{wbf}}.
+by \code{\link{wmf}}.
 }

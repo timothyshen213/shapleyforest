@@ -2,12 +2,12 @@
 % Please edit documentation in R/shapff_plot.R
 \name{plot_stability_elbow}
 \alias{plot_stability_elbow}
-\alias{plot_stability_elbow.bonsai_forest}
-\title{Plot Shadow-Stability Selection Curves for a Bonsai Forest Object}
+\alias{plot_stability_elbow.mossy_forest}
+\title{Plot Shadow-Stability Selection Curves for a Mossy Forest Object}
 \usage{
 plot_stability_elbow(object, ...)
 
-\method{plot_stability_elbow}{bonsai_forest}(
+\method{plot_stability_elbow}{mossy_forest}(
   object,
   col_selected = "#3e568a",
   col_unselected = "gray65",
@@ -20,7 +20,7 @@ plot_stability_elbow(object, ...)
 )
 }
 \arguments{
-\item{object}{A \code{bonsai_forest} object.}
+\item{object}{A \code{mossy_forest} object.}
 
 \item{...}{Ignored.}
 
@@ -64,7 +64,7 @@ line.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{plot_stability_elbow(bonsai_forest)}: Stability elbow plot for a
-\code{bonsai_forest} object.
+\item \code{plot_stability_elbow(mossy_forest)}: Stability elbow plot for a
+\code{mossy_forest} object.
 
 }}

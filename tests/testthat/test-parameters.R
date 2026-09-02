@@ -1,7 +1,7 @@
 # Guards the R control objects against drift from the Python reference package
-# (bonsaiforest_py). If someone reorders or renames a field on one side, these
+# (mossyforest_py). If someone reorders or renames a field on one side, these
 # fail loudly instead of the divergence going unnoticed. The expected orders
-# below are copied verbatim from src/bonsaiforest/parameters.py.
+# below are copied verbatim from src/mossyforest/parameters.py.
 
 test_that("screen_control field order matches the Python reference", {
   expected <- c("drop_fraction", "keep_fraction", "mtry_factor",

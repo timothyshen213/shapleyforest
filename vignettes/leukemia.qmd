@@ -1,5 +1,5 @@
 ---
-title: "BonsaiForest on Real Data:  ALL Leukemia"
+title: "MossyForest on Real Data:  ALL Leukemia"
 author: "Timothy Shen"
 date: today
 format:
@@ -13,7 +13,7 @@ execute:
   warning: false
   message: false
 vignette: >
-  %\VignetteIndexEntry{Bonsai Forest on Real Data: ALL Leukemia}
+  %\VignetteIndexEntry{Mossy Forest on Real Data: ALL Leukemia}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
 
 # Introduction
 
-This vignette demonstrates the full Bonsai Forest (SF) workflow on the
+This vignette demonstrates the full Mossy Forest (SF) workflow on the
 **Acute Lymphoblastic Leukemia (ALL)** microarray dataset. The dataset is a
 high-dimensional genomics dataset originally in the `ALL` package.
 
@@ -51,9 +51,9 @@ We first load the data (included in the package).
 if (!require("devtools", quietly = TRUE))
     install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyzshen/bonsaiforest")
+devtools::install_github("timothyzshen/mossyforest")
 
-library(bonsaiforest)
+library(mossyforest)
 library(WGCNA)
 ```
 
@@ -79,7 +79,7 @@ We have a relatively small dataset of $79 \times 500$ where the outcome is binar
 
 # WGCNA Module Detection
 
-Before running SF we perform WGCNA ourselves to build the network structure.  `wbf()` can run WGCNA internally, but we do it manually which lets us select the parameters manually.
+Before running SF we perform WGCNA ourselves to build the network structure.  `wmf()` can run WGCNA internally, but we do it manually which lets us select the parameters manually.
 
 ```{r wgcna-load}
 options(stringsAsFactors = FALSE)
@@ -296,16 +296,16 @@ We fit SF once on the full dataset using the module membership derived above
 and the **Python backend**, which provides exact TreeSHAP values plus an
 interaction matrix and is much faster than the pure-R fallback.
 This requires a Python environment with `scikit-learn`, `shap`, and `numpy`
-(see `?bf_setup`); configure it once per session with `bf_setup()`.
+(see `?mf_setup`); configure it once per session with `mf_setup()`.
 
-```{r bf-setup, eval=FALSE}
-bf_setup()
+```{r mf-setup, eval=FALSE}
+mf_setup()
 ```
 
 ```{r single-run, eval=FALSE}
 leukemia_X <- as.data.frame(leukemia_X)
 
-fit <- bf(
+fit <- mf(
   X = leukemia_X,
   y = leukemia_y,
   module_membership = module_membership,
@@ -506,7 +506,7 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
   # Reuse the global module membership (computed once on all data); the gene
   # columns are identical across folds, only the sample rows change.
   fit <- tryCatch(
-    bf(X_tr, y_tr,
+    mf(X_tr, y_tr,
        module_membership = module_membership,
        screen_params     = sc,
        select_params     = sl,
@@ -540,7 +540,7 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
 ## Smoke test
 
 The full tuning sweep is 6 variants x 36 grid rows x 5 validation folds --
-over a thousand `bf()` calls (all sharing the one global `module_membership`,
+over a thousand `mf()` calls (all sharing the one global `module_membership`,
 so no WGCNA re-runs). Before launching that, sanity-check that `fit_eval()`
 runs end-to-end on just a couple of grid rows and a single train/test split.
 
@@ -568,7 +568,7 @@ data.frame(
 ```
 
 If both rows return a finite `auc` and `n_stable > 0`, `fit_eval()` and
-`bf()` are wired correctly and it's safe to launch the full `tune` sweep
+`mf()` are wired correctly and it's safe to launch the full `tune` sweep
 below.
 
 ## Cross-validated tuning and stability
@@ -765,7 +765,7 @@ hyperparameters, then score each on the vaulted test set — the single time
 the test data is touched. Because variant selection was committed on the
 validation folds, each test AUC is an honest estimate of that variant's
 generalisation (`best_v` is simply the one we'd deploy). Each
-`final_models[[v]]$fit` is a complete `bonsaiforest` object you can pass
+`final_models[[v]]$fit` is a complete `mossyforest` object you can pass
 straight to `plot_stability()`, `plot_importance()`, or mine for
 `final_SHAP` / `feature_list` / `stability_freq`.
 
@@ -789,7 +789,7 @@ final_models <- lapply(names(VARIANTS), function(vname) {
   )
 
   set.seed(42)
-  fit <- bf(X_tv, y_tv,
+  fit <- mf(X_tv, y_tv,
             module_membership = module_membership,   # global, from WGCNA section
             screen_params     = sc,
             select_params     = sl,

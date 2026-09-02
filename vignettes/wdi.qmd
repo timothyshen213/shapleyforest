@@ -1,5 +1,5 @@
 ---
-title: "BonsaiForest on Real Data:  World Development Indicators"
+title: "MossyForest on Real Data:  World Development Indicators"
 author: "Timothy Shen"
 date: today
 format:
@@ -13,7 +13,7 @@ execute:
   warning: false
   message: false
 vignette: >
-  %\VignetteIndexEntry{Bonsai Forest on Real Data: World Development Indicators}
+  %\VignetteIndexEntry{Mossy Forest on Real Data: World Development Indicators}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
 
 # Introduction
 
-This vignette demonstrates the full Bonsai Forest (SF) workflow on the
+This vignette demonstrates the full Mossy Forest (SF) workflow on the
 **World Development Indicators (WDI)** dataset from the World Bank. Unlike the
 gene-expression panels used in the other vignettes, this is a **non-biological,
 genuinely high-dimensional ($p > n$) tabular dataset** whose features are
@@ -61,9 +61,9 @@ We first load the data (included in the package).
 if (!require("devtools", quietly = TRUE))
     install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyzshen/bonsaiforest")
+devtools::install_github("timothyzshen/mossyforest")
 
-library(bonsaiforest)
+library(mossyforest)
 library(WGCNA)
 ```
 
@@ -122,7 +122,7 @@ ggplot(data.frame(r = off_diag), aes(x = r)) +
 # WGCNA Module Detection
 
 Before running SF we perform WGCNA ourselves to build the network structure.
-`bf()` can run WGCNA internally, but doing it manually lets us select the
+`mf()` can run WGCNA internally, but doing it manually lets us select the
 parameters and inspect the modules before handing them off.
 
 ```{r wgcna-load}
@@ -392,15 +392,15 @@ does **not** leak the outcome.
 We fit SF once on the full dataset using the module membership derived above
 and the **Python backend**, which provides exact TreeSHAP values plus an
 interaction matrix and is much faster than the pure-R fallback. This requires a
-Python environment with `scikit-learn`, `shap`, and `numpy` (see `?bf_setup`);
-configure it once per session with `bf_setup()`.
+Python environment with `scikit-learn`, `shap`, and `numpy` (see `?mf_setup`);
+configure it once per session with `mf_setup()`.
 
-```{r bf-setup, eval=FALSE}
-bf_setup()
+```{r mf-setup, eval=FALSE}
+mf_setup()
 ```
 
 ```{r single-run, eval=FALSE}
-fit <- bf(
+fit <- mf(
   X = wdi_X,
   y = wdi_y,
   module_membership = module_membership,
@@ -583,7 +583,7 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
   )
 
   fit <- tryCatch(
-    bf(X_tr, y_tr,
+    mf(X_tr, y_tr,
        module_membership = module_membership,
        screen_params     = sc,
        select_params     = sl,
@@ -646,7 +646,7 @@ data.frame(
 )
 ```
 
-If both rows return a finite `r2` and `n_stable > 0`, `fit_eval()` and `bf()`
+If both rows return a finite `r2` and `n_stable > 0`, `fit_eval()` and `mf()`
 are wired correctly and it is safe to launch the full `tune` sweep below.
 
 ## Cross-validated tuning and stability
@@ -843,7 +843,7 @@ if (!is.null(sf_cache)) print(sf_cache$p_jaccard)
 We refit **every** variant on the full train+validation set at its locked
 hyperparameters, then score each on the vaulted test set — the single time the
 test data is touched. Each `final_models[[v]]$fit` is a complete
-`bonsaiforest` object available for further exploration.
+`mossyforest` object available for further exploration.
 
 ```{r final-models, eval=FALSE}
 final_models <- lapply(names(VARIANTS), function(vname) {
@@ -865,7 +865,7 @@ final_models <- lapply(names(VARIANTS), function(vname) {
   )
 
   set.seed(42)
-  fit <- bf(X_tv, y_tv,
+  fit <- mf(X_tv, y_tv,
             module_membership = module_membership,
             screen_params     = sc,
             select_params     = sl,

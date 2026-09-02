@@ -1,5 +1,5 @@
 ---
-title: "BonsaiForest on Simulated Data: Module-Based DGM"
+title: "MossyForest on Simulated Data: Module-Based DGM"
 author: "Timothy Shen"
 date: today
 format:
@@ -13,7 +13,7 @@ execute:
   warning: false
   message: false
 vignette: >
-  %\VignetteIndexEntry{Bonsai Forest on Simulated Data}
+  %\VignetteIndexEntry{Mossy Forest on Simulated Data}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(fig.width = 9, fig.height = 5)
 
 # Introduction
 
-This vignette runs the full Bonsai Forest (SF) pipeline on a **synthetic dataset
+This vignette runs the full Mossy Forest (SF) pipeline on a **synthetic dataset
 with known ground truth**, allowing direct evaluation of whether SF selects the
 correct features rather than merely stable or predictive ones.
 
@@ -65,9 +65,9 @@ both sources simultaneously.
 if (!require("devtools", quietly = TRUE))
     install.packages("devtools")
 library(devtools)
-devtools::install_github("timothyzshen/bonsaiforest")
+devtools::install_github("timothyzshen/mossyforest")
 
-library(bonsaiforest)
+library(mossyforest)
 library(WGCNA)
 library(igraph)
 library(MASS)
@@ -261,7 +261,7 @@ knitr::kable(recovery_tbl, align = "lcccccc",
 
 ```{r module-membership-true}
 # Use the ground-truth module labels directly — the same approach as the
-# benchmark (pilot_v3.R passes dat$membership straight to bf()).
+# benchmark (pilot_v3.R passes dat$membership straight to mf()).
 # WGCNA is shown below for exploration only; with n=200 and a PA network it
 # cannot reliably recover the true blocks.
 module_membership <- true_modules
@@ -293,8 +293,8 @@ that handles only one pool will miss the other.
 We fit SF once on the full dataset to explore its output before the formal
 comparison.
 
-```{r bf-setup, eval=FALSE}
-bf_setup()
+```{r mf-setup, eval=FALSE}
+mf_setup()
 ```
 
 ```{r single-run, eval=FALSE}
@@ -302,7 +302,7 @@ sc_single <- screen_control(min_ntree = 500L)
 sl_single <- select_control(min_ntree = 500L, n_boots = 50L,
                              unassigned_modules = "M10_unassigned")
 
-fit <- bf(
+fit <- mf(
   X                 = sim_X,
   y                 = sim_y,
   module_membership = module_membership,
@@ -461,7 +461,7 @@ fit_eval <- function(X_tr, y_tr, X_te, y_te, variant, grid_row) {
   )
 
   fit <- tryCatch(
-    bf(X_tr, y_tr,
+    mf(X_tr, y_tr,
        module_membership = module_membership,
        screen_params     = sc,
        select_params     = sl,
@@ -522,7 +522,7 @@ data.frame(
 ```
 
 If both rows return a finite `auc` and `n_stable > 0`, `fit_eval()` and
-`bf()` are wired correctly and it is safe to launch the full `tune` sweep below.
+`mf()` are wired correctly and it is safe to launch the full `tune` sweep below.
 
 ## Cross-validated tuning and stability
 
@@ -723,7 +723,7 @@ if (!is.null(sim_cache)) print(sim_cache$p_jaccard)
 We refit **every** variant on the full train+validation set at its locked
 hyperparameters, then score each on the vaulted test set — the single time
 the test data is touched.  Each `final_models[[v]]$fit` is a complete
-`bonsaiforest` object available for further exploration.
+`mossyforest` object available for further exploration.
 
 ```{r final-models, eval=FALSE}
 final_models <- lapply(names(VARIANTS), function(vname) {
@@ -745,7 +745,7 @@ final_models <- lapply(names(VARIANTS), function(vname) {
     cfres_scope        = variant$cfres_scope
   )
 
-  fit <- bf(X_tv, y_tv,
+  fit <- mf(X_tv, y_tv,
             module_membership = module_membership,
             screen_params     = sc,
             select_params     = sl,
@@ -860,7 +860,7 @@ sub_size <- floor(0.8 * nrow(X_tv))
 boot_sets <- lapply(seq_len(B), function(b) {
   idx   <- sample(nrow(X_tv), sub_size, replace = FALSE)
   fit_b <- tryCatch(
-    bf(X_tv[idx, ], y_tv[idx],
+    mf(X_tv[idx, ], y_tv[idx],
        module_membership = module_membership,
        screen_params     = best_sc,
        select_params     = best_sl,
