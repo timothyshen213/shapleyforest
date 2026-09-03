@@ -57,3 +57,38 @@ test_that("Python and pure-R backends agree on the screening survivors", {
   expect_gte(length(intersect(surv(r_py), d$true_signals)), 5L)
   expect_gte(length(intersect(surv(r_r),  d$true_signals)), 5L)
 })
+
+test_that("classification direction is w.r.t. levels(y)[1], not factor position (regression guard)", {
+  # Guards a real bug: as.integer(y) on an R factor returns each level's 1-based
+  # POSITION (1, 2, ...), not a 0/1 label. That sent sklearn classes_ = [1, 2]
+  # instead of [0, 1], and every hardcoded classes_[1] pick in
+  # mf_python_backend.py then explained levels(y)[2] instead of levels(y)[1] --
+  # silently flipping the sign of direction / dir_corr / signed_importance for
+  # every classification result. This factor is built exactly like the bug
+  # report: levels = c(1, 0), labels = c("case", "control"), so "case" is
+  # level 1 -- as.integer(y) would give 1 for case / 2 for control, the
+  # data-independent shape that used to trigger the flip.
+  skip_if_no_py_backend()
+  set.seed(42)
+  n <- 400
+  f1 <- rnorm(n)                        # true driver: higher f1 -> more likely "case"
+  f2 <- rnorm(n)                        # noise
+  casecontrol <- rbinom(n, 1, plogis(1.5 * f1))
+  y <- factor(casecontrol, levels = c(1, 0), labels = c("case", "control"))
+  expect_identical(levels(y), c("case", "control"))
+  expect_identical(as.integer(y)[1:3] %in% 1:2, rep(TRUE, 3))  # position-coded, not 0/1
+
+  X  <- data.frame(f1 = f1, f2 = f2)
+  mm <- c(f1 = "M", f2 = "M")
+
+  r <- mf(X, y, module_membership = mm,
+          screen_params = screen_control(min_ntree = 100L),
+          select_params = select_control(n_boots = 10L, min_ntree = 100L, pi_thr = 0.3),
+          final_ntree = 200L, verbose = 0L, seed = 1L, backend = "python")
+
+  f1_row <- r$final_SHAP[r$final_SHAP$feature_name == "f1", ]
+  expect_equal(nrow(f1_row), 1L)
+  # f1 increases P(case) = levels(y)[1] by construction -> direction must be +1.
+  expect_equal(f1_row$direction, 1L)
+  expect_gt(f1_row$dir_corr, 0)
+})

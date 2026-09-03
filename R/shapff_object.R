@@ -17,7 +17,12 @@
 #'                        matrix, samples x stable features) and
 #'                        \code{interaction_matrix} (mean absolute TreeSHAP
 #'                        interaction matrix, stable features x stable features).
-#'                        \code{NULL} when unavailable.
+#'                        \code{NULL} when unavailable. For binary classification,
+#'                        signed values (and \code{final_shap}'s \code{direction} /
+#'                        \code{dir_corr} / \code{signed_importance}) describe the
+#'                        probability of \code{levels(y)[1]} — the first level of
+#'                        the outcome factor. Relevel \code{y} if you want a
+#'                        different reference class.
 #' @param runtime         Named list of runtimes (seconds): Screen, Selection,
 #'                        Final_RF.
 #' @param feature_list    Data frame of the stable feature set with importance

@@ -204,7 +204,7 @@ def _shap_interaction_matrix(rf, X, classification):
     #   newer shap (ndarray)-> (n, p, p, n_classes)  [4-D]
     if isinstance(interaction_raw, list):
         if classification and len(rf.classes_) == 2:
-            iv = np.array(interaction_raw[1])           # positive class (n, p, p)
+            iv = np.array(interaction_raw[1])           # classes_[1] == levels(y)[1] (n, p, p) — see y_py encoding in shapff_fit.R
         elif classification:
             iv = np.mean([np.abs(np.array(s))
                           for s in interaction_raw], axis=0)  # avg across classes
@@ -1107,7 +1107,7 @@ def run_select_rfe(X_surv_mat, y, feature_names_surv,
     if isinstance(shap_raw, list):
         # classification: list of (n x p) arrays, one per class
         if classification and len(rf_stable.classes_) == 2:
-            sv_signed = np.array(shap_raw[1])          # positive class
+            sv_signed = np.array(shap_raw[1])          # classes_[1] == levels(y)[1] — see y_py encoding in shapff_fit.R
         elif classification:
             sv_signed = np.mean([np.array(s) for s in shap_raw], axis=0)
         else:

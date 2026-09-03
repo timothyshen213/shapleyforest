@@ -161,8 +161,24 @@ mf <- function(X, y,
   }
 
   # ── prepare inputs for Python ────────────────────────────────────────────────
-  X_mat         <- as.matrix(X); mode(X_mat) <- "double"
-  y_py          <- if (CLASSIFICATION) as.integer(y) else as.numeric(y)
+  X_mat <- as.matrix(X); mode(X_mat) <- "double"
+  # Binary classification: encode 1 = levels(y)[1], 0 = levels(y)[2]. Plain
+  # as.integer(y) would instead give each level's 1-based POSITION (1, 2, ...),
+  # not a 0/1 label — so sklearn's classes_ becomes [1, 2] rather than [0, 1],
+  # and every downstream "class 1" / "positive class" pick (mf_python_backend.py
+  # hardcodes classes_[1] throughout) would silently explain levels(y)[2]
+  # instead of levels(y)[1]. This flips the sign of every direction / dir_corr /
+  # signed_importance value for classification results. The remap below makes
+  # class "1" deterministically mean levels(y)[1], matching the pure-R backend's
+  # own convention (ranger's probability columns are ordered by levels(y), so
+  # its fastshap direction path already explains levels(y)[1] natively).
+  # Multiclass (>2 levels) is untouched: no single "positive class" is picked
+  # there, so plain position encoding is fine.
+  y_py <- if (CLASSIFICATION) {
+    if (nlevels(y) == 2L) as.integer(y == levels(y)[1L]) else as.integer(y)
+  } else {
+    as.numeric(y)
+  }
   feature_names <- colnames(X)
   module_assign <- as.character(module_membership_screen[feature_names])
   module_list_r <- as.character(module_list_screen)

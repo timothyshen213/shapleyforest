@@ -889,6 +889,10 @@ plot_elbow.mossy_forest <- function(object,
 #' is unusable for direction). Bars to the right increase the outcome, to the
 #' left decrease it. Features whose direction is ambiguous (non-monotone:
 #' \eqn{|\rho| < 0.1}) are greyed — a single direction is misleading for those.
+#' For binary classification, "the outcome" means the probability of
+#' \code{levels(y)[1]} — the first level of the factor passed as \code{y} to
+#' \code{\link{mf}}; relevel \code{y} first if you want a different reference
+#' class.
 #'
 #' @param object    A \code{mossy_forest} object.
 #' @param top_n     Show only the \code{top_n} features with the largest
